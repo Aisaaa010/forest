@@ -1,42 +1,58 @@
 # 森间 · Forest & Stillness
 
-一个纯前端的森林风景观察与放松空间。使用 HTML、CSS、JavaScript、Canvas 和 Web Audio API，无运行时依赖、无后端。
+使用 Vue 3 Composition API、`<script setup>` 单文件组件和 Vite 构建的纯前端森林放松空间。无后端，收藏数据保存在当前浏览器。
 
-## 启动
+## 启动与构建
 
 ```sh
+npm install
 npm run dev
 ```
 
-打开 http://127.0.0.1:5173 。也可以直接打开 `index.html`；推荐通过本地服务器体验图片下载与浏览器存储。
+开发地址：http://127.0.0.1:5173 。Vue 单文件组件需要通过开发服务器运行。
 
 ```sh
 npm run check
 npm run build
+npm run preview
 ```
 
-`dist/` 可以放在任何静态网站托管服务。
+`check` 检查 Vue 组件与 JavaScript 语法；`build` 输出静态网站至 `dist/`；`preview` 在 http://127.0.0.1:4173 预览生产构建。
 
 ## 功能
 
-- 三种森林氛围：晨雾松林、雨落青苔、萤火之境。共享一张森林艺术背景，通过取景、调色和粒子呈现不同心情。
-- 晨光、午后、夜晚与晴朗、薄雾、小雨自由组合。
-- 浏览器实时合成微风、鸟鸣、溪流和雨声，每个声部独立调节。
-- 沉浸观察、风景明信片 PNG 下载、拾光收藏和场景重访。
-- 1 / 3 / 5 分钟呼吸练习：4 秒吸气，6 秒呼气，可随时结束。
-- 移动端布局、键盘操作、减少动态效果偏好。
+- 晨雾松林、雨落青苔、萤火之境三种艺术氛围，共享森林图片并通过取景、调色和粒子呈现不同心情。
+- 晨光 / 午后 / 夜晚及晴朗 / 薄雾 / 小雨自由组合。
+- 浏览器合成微风、鸟鸣、溪流和雨声，各声部独立调整。
+- 沉浸观察、PNG 明信片下载、拾光收藏及重访。
+- 1 / 3 / 5 分钟呼吸练习，可随时结束。
+- 手机适配、键盘操作及减少动态效果偏好。
 
-收藏只存储在当前浏览器的 localStorage。自然声音为合成音效，景色为艺术场景；Google Fonts 为可选字体加载，离线时使用系统字体。
+## 项目结构
 
-## 文件
+```text
+src/
+  App.vue                     页面与响应式状态
+  main.js                     Vue 应用入口
+  styles.css                  森林主题与响应式样式
+  assets/                     森林图片及生成提示词
+  components/
+    ForestDialog.vue          v-model 控制的原生对话框
+    ForestIcon.vue            可复用 SVG 图标
+    IconSprite.vue            图标符号集
+  composables/
+    useForestAudio.js         Web Audio 合成与资源释放
+    useNatureCanvas.js        雨滴 / 萤火 / 光点与生命周期
+    useMomentJournal.js       收藏响应式状态与本地持久化
+    useBreathing.js           呼吸节奏和计时器
+    usePostcard.js            明信片生成与下载
+  data/
+    forest.js                 场景、天气和声音配置
+public/favicon.svg
+scripts/check.mjs
+vite.config.js
+```
 
-- `index.html`：页面、语义结构、弹窗和 SVG 图标。
-- `styles.css`：响应式样式与氛围动画。
-- `app.js`：场景、声音、粒子、呼吸、收藏和明信片。
-- `assets/forest.png`：项目内森林图片。
-- `scripts/serve.mjs`：本地开发服务器，不属于网站运行时。
-- `scripts/build.mjs`：生成静态站点。
+界面使用 `v-for`、`v-if`、`v-model`、`@click`、`:class`、`:style` 等 Vue 模板语法；状态通过 `ref`、`reactive`、`computed` 和 `watch` 管理。Canvas、Web Audio 和下载操作使用原生浏览器 API，资源通过 Vue 生命周期清理。
 
-## 图片来源
-
-森林主视觉由内置 ImageGen 工具生成，提示词保存在 `assets/image-prompt.txt`。
+森林图片由内置 ImageGen 工具生成，提示词见 `src/assets/image-prompt.txt`。Google Fonts 是可选字体请求，离线时回退到系统字体。音频为合成环境声，收藏只存储在 localStorage。
