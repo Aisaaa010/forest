@@ -30,6 +30,9 @@
         d="M6 15a4 4 0 0 1 0-8 6 6 0 0 1 11-1 4.5 4.5 0 0 1 1 9M8 18l-1 3m6-3-1 3m6-3-1 3"
       />
     </symbol>
+    <symbol id="i-snow" viewBox="0 0 24 24">
+      <path d="M12 2v20M4 7l16 10M4 17 20 7M9 4l3 2 3-2M9 20l3-2 3 2M4 10l3-1V6m10 12v-3l3-1M7 18v-3l-3-1m13-8v3l3 1" />
+    </symbol>
     <symbol id="i-moon" viewBox="0 0 24 24">
       <path d="M20 14A9 9 0 0 1 10 3a9 9 0 1 0 10 11Z" />
     </symbol>

@@ -65,9 +65,11 @@ export function useMomentJournal(state, notify) {
   const momentFilter = (m) =>
     m.phase === "night"
       ? "brightness(.3)"
-      : m.weather === "rain"
-        ? "brightness(.65)"
-        : "";
+      : m.weather === "snow"
+        ? "brightness(1.05)"
+        : m.weather === "rain"
+          ? "brightness(.65)"
+          : "";
   return {
     moments,
     currentMoment,

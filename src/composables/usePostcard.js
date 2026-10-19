@@ -20,11 +20,13 @@ export function usePostcard(imageRef, state, notify) {
       ctx.filter =
         state.phase === "night"
           ? "brightness(.3) saturate(.55)"
-          : state.weather === "rain"
-            ? "brightness(.68) saturate(.72)"
-            : state.phase === "afternoon"
-              ? "sepia(.15) brightness(1.08)"
-              : "none";
+          : state.weather === "snow"
+            ? "brightness(1.02) saturate(.76)"
+            : state.weather === "rain"
+              ? "brightness(.68) saturate(.72)"
+              : state.phase === "afternoon"
+                ? "sepia(.15) brightness(1.08)"
+                : "none";
       const targetRatio = 1520 / 875;
       const ratio = image.naturalWidth / image.naturalHeight;
       const cropWidth =

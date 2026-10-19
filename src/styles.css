@@ -18,6 +18,9 @@
 body {
   margin: 0;
 }
+.app-shell {
+  display: contents;
+}
 button,
 a,
 input {
@@ -259,6 +262,10 @@ svg {
   filter: brightness(0.67) saturate(0.8);
   background-size: 150%;
 }
+.snow-thumb {
+  background-position: 49% 51%;
+  background-size: 145%;
+}
 .night-thumb {
   background-position: 85% 35%;
   filter: brightness(0.32) saturate(0.6);
@@ -419,6 +426,9 @@ main {
 }
 .forest-view[data-weather="rain"]:not([data-phase="night"]) .forest-image {
   filter: brightness(0.68) saturate(0.72);
+}
+.forest-view[data-weather="snow"] .forest-image {
+  filter: brightness(1.02) saturate(0.76);
 }
 .forest-view[data-weather="clear"] .mist {
   opacity: 0;

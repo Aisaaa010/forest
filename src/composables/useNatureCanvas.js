@@ -34,7 +34,32 @@ export function useNatureCanvas(canvasRef, viewRef, state) {
       const delta = Math.min(time - lastFrame, 80) / 1000;
       lastFrame = time;
       context.clearRect(0, 0, width, height);
-      if (state.weather === "rain") {
+      if (state.weather === "snow") {
+        for (const p of particles) {
+          if (!reducedMotion.matches) {
+            p.y += delta * p.speed * 0.18;
+            p.x += Math.sin(time * 0.00035 + p.offset) * delta * 0.085;
+            if (p.y > 1.04) {
+              p.y = -0.04;
+              p.x = Math.random();
+            }
+            if (p.x > 1.04) p.x = -0.04;
+            if (p.x < -0.04) p.x = 1.04;
+          }
+          context.globalAlpha = 0.28 + p.speed * 0.37;
+          context.fillStyle = "#f9fbf4";
+          context.beginPath();
+          context.arc(
+            p.x * width,
+            p.y * height,
+            0.85 + p.size * 0.48,
+            0,
+            Math.PI * 2,
+          );
+          context.fill();
+        }
+        context.globalAlpha = 1;
+      } else if (state.weather === "rain") {
         context.strokeStyle =
           state.phase === "night" ? "#c9dde329" : "#e0ece864";
         context.lineWidth = 0.6;

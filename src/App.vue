@@ -11,6 +11,7 @@ import {
 import IconSprite from "./components/IconSprite.vue";
 import ForestIcon from "./components/ForestIcon.vue";
 import ForestDialog from "./components/ForestDialog.vue";
+import WonderlandIntro from "./components/WonderlandIntro.vue";
 import {
   scenes,
   phaseNames,
@@ -39,9 +40,19 @@ const state = reactive({
     rain: { enabled: false, volume: 45 },
   },
 });
+const introVisible = ref(true);
 const scene = computed(() => scenes[state.scene]);
+const currentForestImage = computed(
+  () => scene.value.imageUrl || forestImageUrl,
+);
 const weatherIcon = computed(() =>
-  state.weather === "rain" ? "rain" : state.phase === "night" ? "moon" : "sun",
+  state.weather === "snow"
+    ? "snow"
+    : state.weather === "rain"
+      ? "rain"
+      : state.phase === "night"
+        ? "moon"
+        : "sun",
 );
 const forestView = ref(null),
   forestImage = ref(null),
@@ -134,6 +145,12 @@ onMounted(() => {
   }, 1000);
   document.addEventListener("keydown", handleEscape);
 });
+watch(introVisible, async (visible) => {
+  if (!visible) {
+    await nextTick();
+    document.querySelector("#explore-nav")?.focus({ preventScroll: true });
+  }
+});
 onUnmounted(() => {
   clearInterval(sessionTimer);
   clearTimeout(toastTimer);
@@ -143,6 +160,7 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <div class="app-shell" :inert="introVisible" :aria-hidden="introVisible">
   <IconSprite />
   <a class="skip-link" href="#main">跳至森林</a>
   <header class="header" :inert="immersed">
@@ -187,7 +205,12 @@ onUnmounted(() => {
           :aria-pressed="state.scene === key"
           @click="selectScene(key)"
         >
-          <span class="scene-thumb" :class="`${key}-thumb`"
+          <span
+            class="scene-thumb"
+            :class="`${key}-thumb`"
+            :style="{
+              backgroundImage: `url(${item.imageUrl || forestImageUrl})`,
+            }"
             ><span class="scene-index">{{
               String(index + 1).padStart(2, "0")
             }}</span
@@ -240,7 +263,7 @@ onUnmounted(() => {
           id="forest-image"
           ref="forestImage"
           class="forest-image"
-          :src="forestImageUrl"
+          :src="currentForestImage"
           :style="{ objectPosition: scene.position }"
           :alt="`${phaseNames[state.phase]}${weatherNames[state.weather]}中的松林，青苔与蕨叶围绕着安静的小径`"
         />
@@ -486,7 +509,10 @@ onUnmounted(() => {
       <article v-for="moment in moments" :key="moment.id" class="journal-entry">
         <div
           class="journal-entry-thumb"
-          :style="{ filter: momentFilter(moment) }"
+          :style="{
+            backgroundImage: `url(${scenes[moment.scene].imageUrl || forestImageUrl})`,
+            filter: momentFilter(moment),
+          }"
           aria-hidden="true"
         ></div>
         <div class="journal-entry-copy">
@@ -529,4 +555,6 @@ onUnmounted(() => {
   >
     {{ toastMessage }}
   </div>
+  </div>
+  <WonderlandIntro v-if="introVisible" @enter="introVisible = false" />
 </template>
