@@ -16,6 +16,10 @@
       <path d="M20 3C10 2 3 7 4 14c1 6 8 7 12 3 3-3 4-8 4-14Z" />
       <path d="M3 21 15 9" />
     </symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24">
+      <path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle cx="12" cy="12" r="2.5" />
+    </symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24">
       <path d="M5 12h14m-5-5 5 5-5 5" />
     </symbol>
@@ -48,6 +52,10 @@
       <path
         d="M3 8c3-4 6 4 9 0s6 4 9 0M3 13c3-4 6 4 9 0s6 4 9 0M3 18c3-4 6 4 9 0s6 4 9 0"
       />
+    </symbol>
+    <symbol id="i-fire" viewBox="0 0 24 24">
+      <path d="M12 22a7 7 0 0 0 7-7c0-4-3-6-4-10-2 2-2 4-2 5-2-2-3-5-3-8-1 4-6 8-6 13a8 8 0 0 0 8 7Z" />
+      <path d="M12 22a4 4 0 0 0 4-4c0-2-2-3-3-5-1 2-3 3-3 5a3 3 0 0 0 2 4Z" />
     </symbol>
     <symbol id="i-volume" viewBox="0 0 24 24">
       <path

@@ -1,0 +1,262 @@
+/* The island is the page; controls sit around its edges. */
+body { overflow: hidden; overscroll-behavior: none; }
+.island-app { color: #f5f7ed; }
+.island-app .island-stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+.island-app .forest-view {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 0;
+}
+.island-app #forest-3d-canvas { outline-offset: -6px; }
+.island-chrome {
+  position: absolute;
+  z-index: 4;
+  transition: opacity 260ms ease, visibility 260ms ease;
+}
+.is-immersed .island-chrome { opacity: 0; visibility: hidden; pointer-events: none; }
+.island-header {
+  top: max(28px, env(safe-area-inset-top));
+  left: 38px;
+  right: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  pointer-events: none;
+}
+.island-brand, .island-header-actions { pointer-events: auto; }
+.island-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: 500 25px var(--serif);
+  letter-spacing: 4px;
+  text-shadow: 0 2px 14px #17342a30;
+}
+.island-brand > svg { width: 34px; height: 40px; stroke-width: 1.1; }
+.island-brand small {
+  display: block;
+  font: 8px var(--sans);
+  letter-spacing: 2px;
+  opacity: .7;
+  margin-top: 6px;
+}
+.island-header-actions { display: flex; gap: 8px; align-items: center; }
+.island-header-actions button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #18382e24;
+  border: 1px solid #f6ffec29;
+  backdrop-filter: blur(12px);
+}
+.island-header-actions button:hover { background: #f4f7eb26; }
+.island-header-actions svg { width: 17px; height: 17px; }
+.island-header-actions small { font-size: 10px; opacity: .65; }
+.island-story {
+  top: 139px;
+  left: 42px;
+  max-width: 300px;
+  pointer-events: none;
+  text-shadow: 0 2px 22px #14332622;
+}
+.island-overline { margin: 0 0 14px; font-size: 10px; letter-spacing: 3px; opacity: .7; }
+.island-story h1 { margin: 0; font: 500 clamp(32px, 3.1vw, 46px)/1.35 var(--serif); letter-spacing: 3px; text-wrap: balance; }
+.island-story #scene-description { margin: 16px 0 20px; font-size: 12px; opacity: .75; line-height: 1.8; }
+.island-condition { display: flex; gap: 8px; align-items: center; font-size: 10px; letter-spacing: 1px; opacity: .75; }
+.island-condition svg { width: 15px; height: 15px; }
+.island-actions {
+  top: 48%;
+  right: 34px;
+  transform: translateY(-50%);
+  display: grid;
+  gap: 10px;
+}
+.island-actions button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #eff7e937;
+  background: #183d3026;
+  border-radius: 50%;
+  backdrop-filter: blur(12px);
+}
+.island-actions button:hover { background: #f5fae82c; transform: translateY(-2px); }
+.island-actions button.saved { background: #ecf1d9; color: #4d684a; }
+.island-actions button.saved svg { fill: #4d684a2e; }
+.island-actions button:disabled { opacity: .4; cursor: wait; }
+.island-actions svg { width: 18px; height: 18px; }
+.island-bottom {
+  left: 50%;
+  bottom: max(28px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(568px, calc(100% - 40px));
+  pointer-events: none;
+}
+.island-scene-switcher {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  padding: 7px;
+  border-radius: 21px;
+  background: #f2f5e9e8;
+  border: 1px solid #fff9;
+  box-shadow: 0 12px 48px #173d2926, inset 0 1px 0 #fff8;
+  backdrop-filter: blur(20px);
+  pointer-events: auto;
+  color: #73816b;
+}
+.island-scene-switcher button {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 13px 8px 12px;
+  border-radius: 14px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.island-scene-switcher button > svg { width: 21px; height: 21px; stroke-width: 1.4; }
+.island-scene-switcher button > small { position: absolute; top: 9px; right: 10px; font: 9px Georgia, serif; opacity: .4; }
+.island-scene-switcher button:hover { background: #e2e9d9; color: #3f603e; }
+.island-scene-switcher button.selected { background: #dde7ce; color: #3e5b35; box-shadow: inset 0 0 0 1px #cbd8b9; }
+.island-bottom-tools { display: flex; justify-content: center; align-items: center; gap: 9px; margin-top: 14px; pointer-events: auto; }
+.island-bottom-tools > button {
+  min-height: 39px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-size: 11px;
+  border: 1px solid #f4f8e82e;
+  background: #193d302e;
+  backdrop-filter: blur(12px);
+  white-space: nowrap;
+}
+.island-bottom-tools > button:hover { background: #f3f8e72b; }
+.island-bottom-tools > .island-play { background: #edf2e5eb; color: #476243; border-color: #edf2e5; }
+.island-bottom-tools > .island-play:hover { background: #fff; }
+.island-bottom-tools svg { width: 15px; height: 15px; }
+.island-bottom-tools .sound-bars { height: 15px; margin-left: 2px; gap: 2px; }
+.island-bottom-tools .sound-bars i { background: #7c986a; width: 2px; }
+.island-gesture-hint { left: 38px; bottom: 29px; margin: 0; font-size: 10px; line-height: 1.8; letter-spacing: .3px; opacity: .65; pointer-events: none; }
+.island-gesture-hint span { opacity: .6; }
+.island-session { right: 38px; bottom: 31px; display: grid; gap: 6px; text-align: right; pointer-events: none; }
+.island-session > span { font-size: 9px; letter-spacing: 1px; opacity: .6; }
+.island-session strong { font: 16px Georgia, serif; font-variant-numeric: tabular-nums; letter-spacing: 2px; font-weight: 400; opacity: .8; }
+.island-session small { font-size: 10px; opacity: .75; }
+.island-exit { position: absolute; z-index: 5; right: 30px; bottom: max(28px, env(safe-area-inset-bottom)); display: flex; gap: 8px; align-items: center; padding: 12px 16px; font-size: 12px; border-radius: 999px; background: #183c3359; border: 1px solid #fff4; backdrop-filter: blur(10px); }
+.island-exit svg { width: 15px; height: 15px; }
+.island-unavailable { position: absolute; inset: 40% 20% auto; z-index: 2; text-align: center; color: #edf5e7; pointer-events: none; }
+.island-unavailable svg { width: 38px; height: 38px; }
+.island-unavailable p { font: 20px var(--serif); }
+.island-unavailable small { line-height: 1.8; }
+.island-app #toast { top: 90px; bottom: auto; transform: translate(-50%, -10px); }
+.island-app #toast.show { transform: translate(-50%, 0); }
+.island-app dialog { max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; }
+.island-app .island-settings { width: 620px; padding: 34px; }
+.island-settings > .dialog-close { position: sticky; top: 0; float: right; background: #eef1e6; z-index: 2; }
+.island-settings > h2 { margin: 16px 0 8px; font: 500 27px var(--serif); }
+.island-settings > p { font-size: 12px; color: #89947f; margin: 0 0 26px; }
+.island-settings .environment-panel { border: 0; background: transparent; border-radius: 0; margin: 0; padding: 0; }
+.island-settings .panel-heading { margin-bottom: 20px; }
+.island-settings .panel-heading > span { display: none; }
+.island-settings .environment-row { grid-template-columns: 1fr 1fr; gap: 20px; }
+.island-settings .master-setting { grid-column: 1 / -1; }
+.island-settings .setting-label { font-size: 11px; }
+.island-settings .segmented button { min-height: 38px; font-size: 11px; }
+.island-settings .quiet-tools { grid-template-columns: 1fr; gap: 22px; margin-top: 26px; padding-top: 24px; }
+.island-settings .quiet-tool-heading strong { font-size: 12px; }
+.island-settings .quiet-tool-heading small { font-size: 10px; }
+.island-settings .quiet-tool-controls { justify-content: space-between; }
+.island-settings .mini-segmented button, .island-settings .quiet-toggle { min-height: 34px; font-size: 11px; }
+.island-settings .soundscape { padding-top: 26px; margin-top: 24px; border-top: 1px solid var(--line); }
+.island-settings .soundscape-heading h2 { font-size: 13px; }
+.island-settings .sound-presets { flex-direction: column; align-items: flex-start; gap: 14px; }
+.island-settings .preset-chip, .island-settings .preset-save button, .island-settings .preset-save input { font-size: 11px; min-height: 33px; }
+.island-settings .sound-channels { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 24px; }
+.island-settings .sound-channel button { font-size: 12px; }
+.island-settings input[type="range"] { height: 4px; margin-top: 10px; }
+.island-settings input[type="range"]::-webkit-slider-thumb { width: 14px; height: 14px; }
+.island-app button:focus-visible, .island-app a:focus-visible { outline: 2px solid #dcebc8; outline-offset: 4px; }
+.island-app dialog button:focus-visible, .island-app dialog input:focus-visible { outline-color: #7d9865; }
+
+@media (max-width: 1100px) {
+  .island-story { top: 125px; left: 30px; }
+  .island-gesture-hint { left: 28px; bottom: 185px; font-size: 9px; }
+  .island-session { right: 28px; bottom: 185px; }
+}
+@media (max-width: 680px) {
+  .island-header { top: max(20px, env(safe-area-inset-top)); left: 21px; right: 18px; gap: 10px; }
+  .island-brand { font-size: 22px; letter-spacing: 3px; gap: 8px; }
+  .island-brand > svg { width: 28px; height: 34px; }
+  .island-brand small { font-size: 6px; letter-spacing: 1.1px; }
+  .island-header-actions { gap: 5px; }
+  .island-header-actions button { width: 35px; min-width: 35px; min-height: 35px; padding: 8px; }
+  .island-header-actions button > span:not(.breath-mini), .island-header-actions small { display: none; }
+  .island-story { top: 102px; left: 23px; max-width: calc(100% - 98px); }
+  .island-overline { font-size: 8px; letter-spacing: 2px; margin-bottom: 9px; }
+  .island-story h1 { font-size: 31px; letter-spacing: 2px; }
+  .island-story #scene-description { margin: 10px 0 12px; font-size: 10px; }
+  .island-condition { font-size: 9px; gap: 6px; }
+  .island-actions { right: 18px; top: 112px; transform: none; gap: 8px; }
+  .island-actions button { width: 35px; height: 35px; }
+  .island-actions svg { width: 16px; height: 16px; }
+  .island-bottom { width: calc(100% - 28px); bottom: max(20px, env(safe-area-inset-bottom)); }
+  .island-scene-switcher { gap: 3px; padding: 5px; border-radius: 18px; }
+  .island-scene-switcher button { gap: 7px; padding: 12px 4px 10px; font-size: 11px; border-radius: 12px; }
+  .island-scene-switcher button > small { top: 6px; right: 6px; font-size: 8px; }
+  .island-scene-switcher button > svg { width: 20px; height: 20px; }
+  .island-bottom-tools { margin-top: 11px; gap: 7px; }
+  .island-bottom-tools > button { gap: 6px; padding: 8px 11px; font-size: 10px; min-height: 35px; }
+  .island-bottom-tools .sound-bars { display: none; }
+  .island-gesture-hint { left: 24px; bottom: 161px; font-size: 8px; }
+  .island-gesture-hint span { display: none; }
+  .island-session { bottom: 160px; right: 23px; }
+  .island-session > span { display: none; }
+  .island-session strong { font-size: 12px; }
+  .island-session small { font-size: 9px; }
+  .island-app .island-settings { padding: 26px 22px; }
+  .island-settings .environment-row { grid-template-columns: 1fr; gap: 18px; }
+  .island-settings .quiet-tool-heading { flex-wrap: wrap; }
+  .island-settings .sound-channels { gap: 24px 18px; }
+  .island-settings .sound-channel button { font-size: 11px; gap: 6px; }
+  .island-settings .panel-heading h2 { font-size: 12px; }
+}
+@media (max-height: 520px) and (min-width: 681px) {
+  .island-header { top: 18px; }
+  .island-story { top: 88px; }
+  .island-story h1 { font-size: 30px; }
+  .island-story #scene-description { max-width: 170px; font-size: 10px; }
+  .island-bottom { width: 450px; bottom: 16px; }
+  .island-scene-switcher button { padding: 7px; gap: 3px; }
+  .island-bottom-tools { margin-top: 8px; }
+  .island-gesture-hint { display: none; }
+  .island-session { bottom: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .island-chrome { transition: none; }
+}

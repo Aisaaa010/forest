@@ -5,8 +5,8 @@ export function usePostcard(imageRef, state, notify) {
   const saving = ref(false);
   async function downloadPostcard() {
     const image = imageRef.value;
-    if (!image.complete || !image.naturalWidth) {
-      notify("风景还在加载，请稍后再试。");
+    if (!image.width || !image.height) {
+      notify("3D 风景还在准备，请稍后再试。");
       return;
     }
     saving.value = true;
@@ -17,30 +17,31 @@ export function usePostcard(imageRef, state, notify) {
       const ctx = card.getContext("2d");
       ctx.fillStyle = "#f5f6ef";
       ctx.fillRect(0, 0, 1600, 1100);
-      ctx.filter =
-        state.phase === "night"
-          ? "brightness(.3) saturate(.55)"
-          : state.weather === "snow"
-            ? "brightness(1.02) saturate(.76)"
-            : state.weather === "rain"
-              ? "brightness(.68) saturate(.72)"
-              : state.phase === "afternoon"
-                ? "sepia(.15) brightness(1.08)"
-                : "none";
+      const skyPalette = {
+        morning: ["#b5c9b2", "#577565"],
+        rain: ["#8da5a5", "#425f64"],
+        snow: ["#c8d8db", "#607d8b"],
+        night: ["#344f59", "#172e35"],
+      }[state.scene] || ["#9eb4a4", "#425d4e"];
+      const sky = ctx.createLinearGradient(0, 40, 0, 915);
+      sky.addColorStop(0, skyPalette[0]);
+      sky.addColorStop(1, skyPalette[1]);
+      ctx.fillStyle = sky;
+      ctx.fillRect(40, 40, 1520, 875);
       const targetRatio = 1520 / 875;
-      const ratio = image.naturalWidth / image.naturalHeight;
+      const ratio = image.width / image.height;
       const cropWidth =
         ratio > targetRatio
-          ? image.naturalHeight * targetRatio
-          : image.naturalWidth;
+          ? image.height * targetRatio
+          : image.width;
       const cropHeight =
         ratio > targetRatio
-          ? image.naturalHeight
-          : image.naturalWidth / targetRatio;
+          ? image.height
+          : image.width / targetRatio;
       ctx.drawImage(
         image,
-        (image.naturalWidth - cropWidth) / 2,
-        (image.naturalHeight - cropHeight) / 2,
+        (image.width - cropWidth) / 2,
+        (image.height - cropHeight) / 2,
         cropWidth,
         cropHeight,
         40,

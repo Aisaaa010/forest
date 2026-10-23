@@ -1,5 +1,3 @@
-import winterForestImageUrl from "../assets/winter-forest.png";
-
 export const scenes = {
   morning: {
     title: "晨雾松林",
@@ -8,7 +6,6 @@ export const scenes = {
     description: "深呼吸。听见风，也听见自己。",
     phase: "morning",
     weather: "mist",
-    position: "50% 50%",
   },
   rain: {
     title: "雨落青苔",
@@ -17,7 +14,6 @@ export const scenes = {
     description: "让雨声落下，把心事轻轻放下。",
     phase: "afternoon",
     weather: "rain",
-    position: "30% 65%",
   },
   night: {
     title: "萤火之境",
@@ -26,7 +22,6 @@ export const scenes = {
     description: "世界安静下来，微光慢慢亮起。",
     phase: "night",
     weather: "clear",
-    position: "70% 40%",
   },
   snow: {
     title: "雪落松林",
@@ -35,8 +30,6 @@ export const scenes = {
     description: "围一围暖意，让雪替世界放慢脚步。",
     phase: "morning",
     weather: "snow",
-    position: "50% 52%",
-    imageUrl: winterForestImageUrl,
   },
 };
 
@@ -67,4 +60,9 @@ export const soundOptions = [
   { value: "birds", label: "远处鸟鸣", icon: "bird" },
   { value: "water", label: "潺潺溪流", icon: "water" },
   { value: "rain", label: "叶上雨滴", icon: "rain" },
+  { value: "white", label: "白噪音", icon: "water" },
+  { value: "pink", label: "粉红噪音", icon: "wind" },
+  { value: "brown", label: "棕色噪音", icon: "wind" },
+  { value: "fire", label: "炉火轻响", icon: "fire" },
+  { value: "ocean", label: "远岸潮声", icon: "water" },
 ];
