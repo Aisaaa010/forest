@@ -41,6 +41,7 @@ export function readForestPreferences() {
   }
 
   const scene = scenes[saved.scene] ? saved.scene : "morning";
+  const allowPhase = !scenes[scene].lockedPhase && phaseNames[saved.phase];
   const channels = Object.fromEntries(
     Object.entries(defaultChannels).map(([name, fallback]) => {
       const value = saved.channels?.[name];
@@ -57,7 +58,7 @@ export function readForestPreferences() {
 
   return {
     scene,
-    phase: phaseNames[saved.phase] ? saved.phase : scenes[scene].phase,
+    phase: allowPhase ? saved.phase : scenes[scene].phase,
     weather: weatherNames[saved.weather] ? saved.weather : scenes[scene].weather,
     master: clamp(saved.master, 0, 100, 60),
     channels,

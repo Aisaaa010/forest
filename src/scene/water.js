@@ -131,7 +131,7 @@ void main() {
     float lines = smoothstep(0.6, 0.82, noise(vec2(q.x * 0.55, across * 7.0))) * 0.22;
     float drop = smoothstep(0.9, 1.0, along) * smoothstep(0.4, 0.7, fbm(q * 3.0));
     foam = clamp(bank * 0.45 + lines * 0.45 + drop * 0.8, 0.0, 1.0);
-    alpha = 0.9 - smoothstep(0.78, 1.0, edge) * 0.55;
+    alpha = 0.72 - smoothstep(0.72, 1.0, edge) * 0.4;
   }
   col = mix(col, uFoam, foam * (uFall > 0.5 ? 0.8 : 0.6));
   gl_FragColor = vec4(col, alpha);

@@ -11,6 +11,7 @@ export const sceneUniforms = {
   // Sun direction in view space, refreshed per frame for leaf translucency.
   uSunView: { value: new THREE.Vector3(0, 1, 0) },
   uTranslucent: { value: new THREE.Color(0xd9e88a) },
+  uIce: { value: 0 },
 };
 
 const glslNumber = (value) => (Number.isInteger(value) ? `${value}.0` : `${value}`);
@@ -19,6 +20,31 @@ const glslNumber = (value) => (Number.isInteger(value) ? `${value}.0` : `${value
 const CANOPY_WAVE = `float canopyWave(vec3 p) {
   return (sin(uTime * 2.3 + p.x * 6.0 + p.y * 4.0) * cos(uTime * 1.7 + p.z * 5.0 - p.y * 3.0)) * 0.7
     + sin(uTime * 7.0 + dot(p, vec3(23.0, 17.0, 31.0))) * 0.3;
+}`;
+
+// Cheap object-space noise used for bark, rock and soil micro-detail. It is
+// evaluated per fragment, so no textures or extra vertex data are needed.
+const DETAIL_NOISE = `float detailHash(vec3 p) {
+  p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float detailNoise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(detailHash(i), detailHash(i + vec3(1.0, 0.0, 0.0)), f.x),
+        mix(detailHash(i + vec3(0.0, 1.0, 0.0)), detailHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+    mix(mix(detailHash(i + vec3(0.0, 0.0, 1.0)), detailHash(i + vec3(1.0, 0.0, 1.0)), f.x),
+        mix(detailHash(i + vec3(0.0, 1.0, 1.0)), detailHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
+    f.z);
+}
+float detailFbm(vec3 p) {
+  float sum = 0.0;
+  float amp = 0.5;
+  for (int i = 0; i < 3; i++) { sum += detailNoise(p) * amp; p = p * 2.03 + 13.1; amp *= 0.5; }
+  return sum / 0.875;
 }`;
 
 // Extends a built-in material with optional effects:
@@ -33,17 +59,47 @@ const CANOPY_WAVE = `float canopyWave(vec3 p) {
 // - frost: whole-surface pale tint as uSnow rises (grass blades).
 // - snow: snow settles on upward-facing surfaces with a broken, drifted edge.
 export function enhanceMaterial(material, options = {}) {
-  const { rim = 0, wind = 0, rustle = 0, frost = 0, flutter = 0, translucency = 0, hang = 0, canopy = 0, snow = 0 } = options;
+  const {
+    rim = 0, wind = 0, rustle = 0, frost = 0, flutter = 0, translucency = 0,
+    hang = 0, canopy = 0, snow = 0, jitter = 0, crownMix = 0.72, detail = null, ice = 0,
+  } = options;
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, sceneUniforms);
     const vertexHead = ["uniform float uTime;", "uniform float uWind;", CANOPY_WAVE];
     const fragmentHead = ["uniform float uSnow;"];
     let beginVertex = "";
+    let beginNormal = "";
     let projectExtra = "";
     let normalExtra = "";
     let colorExtra = "";
     let lightExtra = "";
 
+    if (detail) {
+      const { scale = 9, normalStrength = 0.08, stretch = [1, 1, 1] } = detail;
+      vertexHead.push("varying vec3 vDetailWorld;");
+      fragmentHead.push("varying vec3 vDetailWorld;", DETAIL_NOISE);
+      projectExtra += `
+  vDetailWorld = (modelMatrix * mvPosition).xyz;`;
+      colorExtra += `
+  vec3 detailP = vDetailWorld * vec3(${glslNumber(stretch[0])}, ${glslNumber(stretch[1])}, ${glslNumber(stretch[2])}) * ${glslNumber(scale)};
+  float detailA = detailFbm(detailP);
+  float detailB = detailFbm(detailP * 3.7 + 11.0);
+  diffuseColor.rgb *= 0.88 + detailA * 0.24;`;
+      normalExtra += `
+  float detailGrad = detailA * 0.72 + detailB * 0.28;
+  normal = normalize(normal + vec3(dFdx(detailGrad), dFdy(detailGrad), 0.0) * ${glslNumber(normalStrength)});
+  roughnessFactor = clamp(roughnessFactor + (detailB - 0.5) * 0.24, 0.16, 1.0);`;
+    }
+    if (jitter) {
+      vertexHead.push("attribute vec3 aLeafJitter;");
+      beginNormal += `
+  objectNormal = normalize(objectNormal + aLeafJitter * ${glslNumber(jitter)});`;
+    }
+    if (ice) {
+      fragmentHead.push("uniform float uIce;");
+      colorExtra += `
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.75, 0.91) * (0.82 + 0.18 * diffuseColor.g), uIce * ${glslNumber(ice)});`;
+    }
     if (rustle) {
       beginVertex += `
   vec3 rustleWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
@@ -82,7 +138,7 @@ export function enhanceMaterial(material, options = {}) {
   vCrownNormal = normalize(normalMatrix * aCrownNormal);`;
       // Mostly crown normal, a little of the leaf's own facing for texture.
       normalExtra += `
-  normal = normalize(mix(normal * sign(dot(normal, vCrownNormal) + 1e-4), vCrownNormal, 0.72));`;
+  normal = normalize(mix(normal * sign(dot(normal, vCrownNormal) + 1e-4), vCrownNormal, ${glslNumber(crownMix)}));`;
     }
     if (hang) {
       vertexHead.push("attribute float aSway;");
@@ -126,6 +182,7 @@ export function enhanceMaterial(material, options = {}) {
 
     shader.vertexShader = shader.vertexShader.replace("#include <common>", `#include <common>\n${vertexHead.join("\n")}`);
     shader.fragmentShader = shader.fragmentShader.replace("#include <common>", `#include <common>\n${fragmentHead.join("\n")}`);
+    if (beginNormal) shader.vertexShader = shader.vertexShader.replace("#include <beginnormal_vertex>", `#include <beginnormal_vertex>${beginNormal}`);
     if (beginVertex) shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>${beginVertex}`);
     if (projectExtra) {
       shader.vertexShader = shader.vertexShader.replace("#include <project_vertex>", `vec4 mvPosition = vec4(transformed, 1.0);

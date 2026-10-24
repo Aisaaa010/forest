@@ -1850,3 +1850,67 @@ dialog p {
   .sleep-presets { gap: 3px; }
   .observation-dialog { padding: 42px 24px 34px; }
 }
+
+/* Additional scenes: alpine cabin dusk / polar aurora night. */
+.forest-view[data-scene="alpine"] {
+  background:
+    radial-gradient(ellipse at 52% 71%, #f0a35f70 0, transparent 35%),
+    radial-gradient(ellipse at 50% 83%, #a96d7040 0, transparent 50%),
+    linear-gradient(165deg, #061a32 0%, #0c2e50 40%, #1c4562 66%, #2e3447 100%);
+}
+.forest-view[data-scene="alpine"][data-phase="morning"] {
+  background:
+    radial-gradient(ellipse at 50% 73%, #6e9fc533 0, transparent 42%),
+    linear-gradient(165deg, #031224 0%, #072340 40%, #0e3653 72%, #051321 100%);
+}
+.forest-view[data-scene="alpine"][data-phase="night"] {
+  background:
+    radial-gradient(ellipse at 50% 64%, #d79b5c30 0, transparent 34%),
+    radial-gradient(ellipse at 50% 80%, #5d819c33 0, transparent 52%),
+    linear-gradient(165deg, #071829 0%, #0b2439 55%, #05111e 100%);
+}
+.forest-view[data-scene="aurora"] {
+  background:
+    radial-gradient(ellipse at 55% 48%, #2fae8a42 0, transparent 45%),
+    radial-gradient(ellipse at 28% 42%, #7a5fe02b 0, transparent 38%),
+    radial-gradient(ellipse at 50% 100%, #164a58 0, transparent 55%),
+    linear-gradient(168deg, #040b17 0%, #071b30 46%, #06141f 100%);
+}
+.forest-view[data-scene="aurora"]::before {
+  opacity: 0.58;
+  background:
+    linear-gradient(112deg, transparent 8%, #5bffd124 32%, transparent 50%, #9b7cff1c 68%, transparent 84%),
+    radial-gradient(ellipse at 50% 60%, #4de8bb1f 0, transparent 64%);
+  animation: island-mist 26s ease-in-out infinite alternate;
+}
+.journal-entry-thumb[data-scene="alpine"] { background: linear-gradient(150deg, #9dbfd3, #2d5773 58%, #0a223a); }
+.journal-entry-thumb[data-scene="aurora"] { background: linear-gradient(150deg, #3d7f7d, #123849 55%, #040d17); }
+.scene-thumb[data-scene="alpine"] { background: linear-gradient(150deg, #9dbfd3, #0a223a); }
+.scene-thumb[data-scene="aurora"] { background: linear-gradient(150deg, #3d7f7d, #040d17); }
+/* Beat the generic weather background for the alpine scene. */
+.forest-view[data-scene="alpine"][data-weather="snow"] {
+  background:
+    radial-gradient(ellipse at 52% 71%, #f0a35f70 0, transparent 35%),
+    radial-gradient(ellipse at 50% 83%, #a96d7040 0, transparent 50%),
+    linear-gradient(165deg, #061a32 0%, #0c2e50 40%, #1c4562 66%, #2e3447 100%);
+}
+.forest-view[data-scene="alpine"][data-phase="morning"][data-weather="snow"] {
+  background:
+    radial-gradient(ellipse at 50% 73%, #6e9fc533 0, transparent 42%),
+    linear-gradient(165deg, #031224 0%, #072340 40%, #0e3653 72%, #051321 100%);
+}
+.forest-view[data-scene="alpine"][data-phase="night"][data-weather="snow"] {
+  background:
+    radial-gradient(ellipse at 50% 64%, #d79b5c30 0, transparent 34%),
+    radial-gradient(ellipse at 50% 80%, #5d819c33 0, transparent 52%),
+    linear-gradient(165deg, #071829 0%, #0b2439 55%, #05111e 100%);
+}
+.forest-view[data-scene="aurora"]::before {
+  opacity: 0.62;
+  background:
+    repeating-linear-gradient(101deg, transparent 0 4.5%, #53ffd00f 4.8% 5.2%, transparent 5.5% 10.5%),
+    repeating-linear-gradient(97deg, transparent 0 7.5%, #72e8ff12 7.8% 8.2%, transparent 8.5% 15%),
+    linear-gradient(112deg, transparent 8%, #5bffd124 32%, transparent 50%, #9b7cff1c 68%, transparent 84%),
+    radial-gradient(ellipse at 50% 60%, #4de8bb1f 0, transparent 64%);
+  animation: island-mist 26s ease-in-out infinite alternate;
+}

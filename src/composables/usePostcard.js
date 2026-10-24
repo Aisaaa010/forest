@@ -22,6 +22,8 @@ export function usePostcard(imageRef, state, notify) {
         rain: ["#8da5a5", "#425f64"],
         snow: ["#c8d8db", "#607d8b"],
         night: ["#344f59", "#172e35"],
+        alpine: ["#cfdee6", "#3d5866"],
+        aurora: ["#416e78", "#081a26"],
       }[state.scene] || ["#9eb4a4", "#425d4e"];
       const sky = ctx.createLinearGradient(0, 40, 0, 915);
       sky.addColorStop(0, skyPalette[0]);

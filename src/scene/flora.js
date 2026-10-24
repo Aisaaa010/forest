@@ -4,6 +4,19 @@ import { enhanceMaterial } from "./materials.js";
 import { fbm } from "./terrain.js";
 
 const { smoothstep } = THREE.MathUtils;
+const flat = (geometry) => (geometry.index ? geometry.toNonIndexed() : geometry);
+const UP = new THREE.Vector3(0, 1, 0);
+
+function tuftRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), 1 | t);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 // Curved, tapered blade with a root-to-tip colour ramp. Both faces are built
 // explicitly with upward-leaning normals so blades never render dark from behind.
@@ -12,8 +25,9 @@ function makeBladeGeometry(segments = 4) {
   const normals = [];
   const colors = [];
   const indices = [];
-  const root = new THREE.Color(0.32, 0.42, 0.24);
-  const tip = new THREE.Color(1.15, 1.12, 0.82);
+  const root = new THREE.Color(0.24, 0.35, 0.18);
+  // Tips stay yellow-green rather than blowing out to straw white under the rim light.
+  const tip = new THREE.Color(0.92, 0.96, 0.58);
   const shade = new THREE.Color();
   for (let side = 0; side < 2; side++) {
     const base = positions.length / 3;
@@ -43,34 +57,69 @@ function makeBladeGeometry(segments = 4) {
   return geometry;
 }
 
+// A tuft of blades rather than a single card: one instance now covers a small
+// clump with several heights, widths and lean directions.
+function makeGrassTuftGeometry(seed = 7) {
+  const rng = tuftRandom(seed);
+  const parts = [];
+  const blades = 5 + Math.floor(rng() * 2);
+  for (let b = 0; b < blades; b++) {
+    const blade = makeBladeGeometry(4);
+    const height = 0.85 + rng() * 0.75;
+    const width = 0.55 + rng() * 0.45;
+    const angle = rng() * Math.PI * 2;
+    const reach = 0.4 + rng() * 1.6;
+    blade.scale(width, height, 1);
+    blade.rotateY(angle);
+    blade.rotateX((rng() - 0.5) * 0.32);
+    blade.rotateZ((rng() - 0.5) * 0.3);
+    blade.translate(Math.cos(angle) * reach, 0, Math.sin(angle) * reach);
+    parts.push(flat(blade));
+  }
+  return mergeGeometries(parts, false);
+}
+
 // Dense meadow grass: clumped by noise, taller toward the rim, thinned in the stream.
-export function buildGrass({ count, heightAt, streamDistance, rimPoint, avoid = [] }) {
-  const geometry = makeBladeGeometry();
+export function buildGrass({ count, heightAt, normalAt, streamDistance, rimPoint, avoid = [] }) {
+  const geometry = makeGrassTuftGeometry(17);
   const material = enhanceMaterial(
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82 }),
-    { rim: 0.8, wind: 0.32, frost: 0.75 },
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86 }),
+    { rim: 0.3, wind: 0.32, frost: 0.75 },
   );
   const mesh = new THREE.InstancedMesh(geometry, material, count);
   const dummy = new THREE.Object3D();
   const color = new THREE.Color();
+  const up = new THREE.Vector3(0, 1, 0);
   let placed = 0;
-  for (let attempt = 0; attempt < count * 4 && placed < count; attempt++) {
+  for (let attempt = 0; attempt < count * 5 && placed < count; attempt++) {
     const angle = Math.random() * Math.PI * 2;
     const radial = Math.sqrt(Math.random()) * 0.965;
     const { x, z } = rimPoint(angle, radial);
     const water = streamDistance(x, z);
-    if (water < 0.2) continue;
-    if (avoid.some(([ax, az]) => Math.hypot(x - ax, z - az) < 0.11)) continue;
+    if (water < 0.3) continue;
+    if (avoid.some(([ax, az, reach = 0.12]) => Math.hypot(x - ax, z - az) < reach)) continue;
     const clump = smoothstep(fbm(x * 1.6 + 3, z * 1.6 - 2, 3), -0.35, 0.3);
-    if (Math.random() > 0.25 + clump * 0.75) continue;
-    const lush = 0.6 + clump * 0.5 + smoothstep(radial, 0.7, 0.96) * 0.35 + (1 - smoothstep(water, 0.2, 0.6)) * 0.3;
-    const height = (0.07 + Math.random() * 0.13) * lush;
-    dummy.position.set(x, heightAt(x, z) - 0.01, z);
-    dummy.rotation.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.3);
-    dummy.scale.set(0.022 + Math.random() * 0.018, height, height);
+    if (Math.random() > 0.2 + clump * 0.8) continue;
+    const lush = 0.72 + clump * 0.42 + smoothstep(radial, 0.7, 0.96) * 0.28 + (1 - smoothstep(water, 0.35, 0.8)) * 0.1;
+    const height = (0.1 + Math.random() * 0.09) * lush;
+    dummy.position.set(x, heightAt(x, z) - 0.006, z);
+    if (normalAt) {
+      const normal = normalAt(x, z);
+      dummy.quaternion.setFromUnitVectors(up, normal);
+      dummy.rotateY(Math.random() * Math.PI * 2);
+      dummy.rotateX((Math.random() - 0.5) * 0.12);
+      dummy.rotateZ((Math.random() - 0.5) * 0.12);
+    } else {
+      dummy.rotation.set((Math.random() - 0.5) * 0.2, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.2);
+    }
+    dummy.scale.set(0.021 + Math.random() * 0.009, height, 0.021 + Math.random() * 0.009);
     dummy.updateMatrix();
     mesh.setMatrixAt(placed, dummy.matrix);
-    color.setHSL(0.21 + Math.random() * 0.08 - clump * 0.02, 0.38 + Math.random() * 0.22, 0.3 + Math.random() * 0.14 + clump * 0.04);
+    color.setHSL(
+      0.2 + Math.random() * 0.08 - clump * 0.015,
+      0.36 + Math.random() * 0.2,
+      0.32 + Math.random() * 0.1 + clump * 0.03 + (1 - smoothstep(water, 0.2, 0.6)) * 0.025,
+    );
     mesh.setColorAt(placed, color);
     placed++;
   }
@@ -115,9 +164,6 @@ function makePetalGeometry({
   geometry.computeVertexNormals();
   return geometry;
 }
-
-// mergeGeometries needs every part indexed the same way; flatten them all.
-const flat = (geometry) => (geometry.index ? geometry.toNonIndexed() : geometry);
 
 // Replace vertex colours with a flat colour, optionally keeping existing shading.
 function paint(geometry, hex, keepShading = false) {
@@ -251,7 +297,7 @@ function makeFlowerBody(type) {
 
 // Flower beds: each species is two instanced meshes (tinted petals + green body),
 // clustered in drifts so the meadow reads as patches instead of noise.
-export function buildFlowers({ perType, heightAt, streamDistance, rimPoint, avoid = [] }) {
+export function buildFlowers({ perType, heightAt, normalAt, streamDistance, rimPoint, avoid = [] }) {
   const group = new THREE.Group();
   group.name = "flowers";
   const petalMaterial = enhanceMaterial(
@@ -290,7 +336,14 @@ export function buildFlowers({ perType, heightAt, streamDistance, rimPoint, avoi
       if (avoid.some(([ax, az]) => Math.hypot(x - ax, z - az) < 0.22)) continue;
       const size = 1.05 + Math.random() * 0.55;
       dummy.position.set(x, heightAt(x, z) - 0.008, z);
-      dummy.rotation.set((Math.random() - 0.5) * 0.25, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.25);
+      if (normalAt) {
+        dummy.quaternion.setFromUnitVectors(UP, normalAt(x, z));
+        dummy.rotateY(Math.random() * Math.PI * 2);
+        dummy.rotateX((Math.random() - 0.5) * 0.18);
+        dummy.rotateZ((Math.random() - 0.5) * 0.18);
+      } else {
+        dummy.rotation.set((Math.random() - 0.5) * 0.25, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.25);
+      }
       dummy.scale.setScalar(size);
       dummy.updateMatrix();
       petals.setMatrixAt(placed, dummy.matrix);

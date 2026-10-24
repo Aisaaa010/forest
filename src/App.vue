@@ -59,16 +59,42 @@ const observationPrompts = {
     "找一处雪落在枝叶上的地方，停留几次呼吸。",
     "看看雪地里最浅和最深的颜色，慢慢分辨它们。",
   ],
+  alpine: [
+    "从木屋的窗光开始，慢慢看到屋檐上的积雪。",
+    "听雪落在屋顶和松枝上，闻一闻木柴和冷空气的味道。",
+    "找一找从木屋到冰湖的那条小路，跟着它走一遍。",
+  ],
+  aurora: [
+    "先看冰面，再看极光，比较两种绿色有什么不同。",
+    "留意木屋窗光和极光谁更亮，它们之间隔着什么。",
+    "在极夜里找一处最暗的地方，等眼睛慢慢适应。",
+  ],
 };
-const roamScenes = ["morning", "rain", "snow", "night"];
-const weatherIcon = computed(() =>
-  state.weather === "snow"
+const roamScenes = ["morning", "rain", "snow", "night", "alpine", "aurora"];
+const activePhaseOptions = computed(() =>
+  phaseOptions.map((option) => ({
+    ...option,
+    label: scene.value.phaseLabels?.[option.value] || option.label,
+    disabled: scene.value.lockedPhase && option.value !== "night",
+  })),
+);
+const weatherIcon = computed(() => {
+  if (state.scene === "aurora") return "aurora";
+  if (state.scene === "alpine") {
+    if (state.phase === "morning") return "sun";
+    if (state.phase === "night") return "moon";
+    return "snow";
+  }
+  return state.weather === "snow"
     ? "snow"
     : state.weather === "rain"
       ? "rain"
       : state.phase === "night"
         ? "moon"
-        : "sun",
+        : "sun";
+});
+const conditionText = computed(
+  () => scene.value.conditions?.[state.phase] || `${phaseNames[state.phase]} · ${weatherNames[state.weather]}`,
 );
 const forestView = ref(null),
   threeCanvas = ref(null),
@@ -82,7 +108,7 @@ const immersed = ref(false),
   journalOpen = ref(false),
   aboutOpen = ref(false);
 const settingsOpen = ref(false);
-const sceneIcons = { morning: "sun", rain: "rain", night: "moon", snow: "snow" };
+const sceneIcons = { morning: "sun", rain: "rain", night: "moon", snow: "snow", alpine: "cabin", aurora: "aurora" };
 const toastMessage = ref(""),
   toastVisible = ref(false);
 const journalQuery = ref("");
@@ -438,10 +464,14 @@ onUnmounted(() => {
       </header>
 
       <section class="island-story island-chrome" :inert="immersed" aria-live="polite">
-        <p class="island-overline">一座小岛，四时风景</p>
+        <p class="island-overline">一座小岛，六种风景</p>
         <h1 id="scene-title">{{ scene.title }}</h1>
         <p id="scene-description">{{ scene.description }}</p>
-        <div class="island-condition"><ForestIcon :name="weatherIcon" /><span id="scene-condition">{{ phaseNames[state.phase] }} · {{ weatherNames[state.weather] }}</span></div>
+        <div class="island-condition"><ForestIcon :name="weatherIcon" /><span id="scene-condition">{{ conditionText }}</span></div>
+        <div v-if="state.scene === 'alpine'" class="island-time-switch" aria-label="切换木屋时光">
+          <button :class="{ selected: state.phase === 'morning' }" :aria-pressed="state.phase === 'morning'" @click="state.phase = 'morning'">蓝调清晨</button>
+          <button :class="{ selected: state.phase === 'afternoon' }" :aria-pressed="state.phase === 'afternoon'" @click="state.phase = 'afternoon'">黄昏暖窗</button>
+        </div>
       </section>
 
       <aside class="island-actions island-chrome" aria-label="此刻的岛屿" :inert="immersed">
@@ -490,11 +520,12 @@ onUnmounted(() => {
             <span class="setting-label">森林时光</span>
             <div id="phase-options" class="segmented">
               <button
-                v-for="option in phaseOptions"
+                v-for="option in activePhaseOptions"
                 :key="option.value"
                 :data-phase="option.value"
                 :class="{ selected: state.phase === option.value }"
                 :aria-pressed="state.phase === option.value"
+                :disabled="option.disabled"
                 @click="state.phase = option.value"
               >
                 <ForestIcon v-if="option.icon" :name="option.icon" />{{

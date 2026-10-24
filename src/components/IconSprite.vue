@@ -40,6 +40,13 @@
     <symbol id="i-moon" viewBox="0 0 24 24">
       <path d="M20 14A9 9 0 0 1 10 3a9 9 0 1 0 10 11Z" />
     </symbol>
+    <symbol id="i-cabin" viewBox="0 0 24 24">
+      <path d="m3 11 9-7 9 7M5 10v10h14V10M9 20v-5h6v5" />
+      <path d="M8 7V4h3v3.5M16 6h2v3" />
+    </symbol>
+    <symbol id="i-aurora" viewBox="0 0 24 24">
+      <path d="M3 7c4-4 7 3 11 0s6 3 7 1M3 12c4-4 7 3 11 0s6 3 7 1M3 17c4-4 7 3 11 0s6 3 7 1" />
+    </symbol>
     <symbol id="i-wind" viewBox="0 0 24 24">
       <path
         d="M3 8h12a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h6a3 3 0 1 1-3 3"

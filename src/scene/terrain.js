@@ -9,8 +9,8 @@ export const RIM_SEGMENTS = 144;
 
 const { smoothstep, lerp } = THREE.MathUtils;
 const CLIFF_DEPTH = 2.25;
-const ROCK_ROWS = 26;
-const STRATA = [0x7a6548, 0x655842, 0x544a3a, 0x6d6450].map((hex) => new THREE.Color(hex));
+const ROCK_ROWS = 32;
+const STRATA = [0x8a7254, 0x6b5a43, 0x4f4638, 0x7a6d58].map((hex) => new THREE.Color(hex));
 const MOSS = new THREE.Color(0x56683c);
 const SOIL = new THREE.Color(0x4f3b28);
 const TURF_SHADOW = new THREE.Color(0x2f3b1d);
@@ -58,7 +58,12 @@ export function angleGap(a, b) {
 }
 
 export function rimWobble(angle) {
-  return 1 + Math.sin(angle * 5) * 0.025 + Math.cos(angle * 9) * 0.018 + ringNoise(angle, 2.2, 3.1) * 0.035;
+  // Two slow lobes give the island a less machined outline; erosion notches break
+  // up the few places where the silhouette would otherwise read as a perfect oval.
+  const lobes = Math.sin(angle * 2 + 0.6) * 0.032 + Math.sin(angle * 3.3 - 1.1) * 0.018;
+  const notch = Math.pow(Math.max(0, Math.sin(angle * 7 + 1.7)), 7) * 0.026;
+  return 1 + lobes + Math.sin(angle * 5) * 0.018 + Math.cos(angle * 9) * 0.012
+    + ringNoise(angle, 2.2, 3.1) * 0.05 - notch;
 }
 
 export function rimPoint(angle, inset = 1) {
@@ -98,24 +103,37 @@ export function createIslandTerrain({ streamCurve, fallAngle }) {
     const interior = 1 - smoothstep(rn, 0.68, 1);
     const hills = (fbm(x * 0.32 + 4.2, z * 0.42 - 1.3, 4) * 0.5 + 0.5) * 0.3;
     const bumps = fbm(x * 2.6, z * 2.6, 2) * 0.018;
+    const micro = fbm(x * 7.4 + 2.6, z * 7.4 - 4.8, 2) * 0.0075;
     const rim = ringNoise(angle, 3, 7.7, 2) * 0.03;
-    let y = 0.17 + rim * (1 - interior) + hills * interior + bumps * (0.4 + interior * 0.6);
+    let y = 0.17 + rim * (1 - interior) + hills * interior + bumps * (0.4 + interior * 0.6)
+      + micro * interior;
     // Carve a shallow bed so the stream sits in the meadow instead of on top of it.
     const distance = streamDistance(x, z);
-    const bed = 0.15 + smoothstep(distance, 0.1, 0.3) * 0.035;
+    const bed = 0.122 + smoothstep(distance, 0.1, 0.3) * 0.04;
     y = lerp(y, bed, 1 - smoothstep(distance, 0.2, 0.72));
     return y;
   }
 
+  // Slope normal, sampled from the same height field so grass, roots and rocks can
+  // sit on the surface instead of floating over it.
+  function normalAt(x, z) {
+    const e = 0.055;
+    const left = heightAt(x - e, z);
+    const right = heightAt(x + e, z);
+    const back = heightAt(x, z - e);
+    const front = heightAt(x, z + e);
+    return new THREE.Vector3(left - right, e * 2, back - front).normalize();
+  }
+
   function meadowColor(x, z, y, rn, distance, target) {
     const patch = fbm(x * 0.7 + 11, z * 0.9, 3);
-    target.setRGB(0.10, 0.22, 0.085);
-    if (patch > 0) target.lerp(new THREE.Color(0.17, 0.27, 0.09), Math.min(1, patch * 2.2));
-    else target.lerp(new THREE.Color(0.065, 0.165, 0.07), Math.min(1, -patch * 2.2));
+    target.setRGB(0.085, 0.19, 0.07);
+    if (patch > 0) target.lerp(new THREE.Color(0.14, 0.235, 0.075), Math.min(1, patch * 2.2));
+    else target.lerp(new THREE.Color(0.052, 0.14, 0.06), Math.min(1, -patch * 2.2));
     const moist = 1 - smoothstep(distance, 0.2, 0.75);
-    target.lerp(new THREE.Color(0.06, 0.18, 0.08), moist * 0.6);
-    target.lerp(new THREE.Color(0.15, 0.21, 0.08), smoothstep(rn, 0.9, 1) * 0.55);
-    target.multiplyScalar(0.92 + (y - 0.17) * 0.75 + (hash(x * 31, z * 17) - 0.5) * 0.08);
+    target.lerp(new THREE.Color(0.045, 0.145, 0.065), moist * 0.65);
+    target.lerp(new THREE.Color(0.13, 0.185, 0.07), smoothstep(rn, 0.9, 1) * 0.55);
+    target.multiplyScalar(0.9 + (y - 0.17) * 0.7 + (hash(x * 31, z * 17) - 0.5) * 0.1);
     return target;
   }
 
@@ -171,12 +189,13 @@ export function createIslandTerrain({ streamCurve, fallAngle }) {
     for (let row = 1; row <= ROCK_ROWS; row++) {
       const depth = row / ROCK_ROWS;
       const crag = fbm(Math.cos(angle) * 3.1 + depth * 3.5, Math.sin(angle) * 3.1 - depth * 2.2, 4)
-        * (0.05 + depth * 0.14) * (0.3 + calm * 0.7);
-      const grooves = ringNoise(angle, 9, 2.4, 2) * 0.035 * depth * calm;
-      const band = depth * 6 + strataTilt;
+        * (0.08 + depth * 0.2) * (0.3 + calm * 0.7);
+      const grooves = ringNoise(angle, 11, 2.4, 2) * 0.05 * depth * calm;
+      const fracture = Math.pow(Math.max(0, ringNoise(angle, 17, 6.2, 2)), 2) * 0.035 * depth * calm;
+      const band = depth * 7 + strataTilt;
       const ledge = Math.pow(Math.max(0, Math.sin(band * Math.PI * 2)), 6) * (1 - depth) * calm;
       rows.push({
-        factor: Math.max(0.02, cliffTaper(depth) * (1 + crag + grooves) + ledge * 0.05),
+        factor: Math.max(0.02, cliffTaper(depth) * (1 + crag + grooves - fracture) + ledge * 0.05),
         y: -0.04 - depth * CLIFF_DEPTH - spike * Math.pow(depth, 3) * 0.6,
         kind: "rock",
         depth,
@@ -287,6 +306,7 @@ export function createIslandTerrain({ streamCurve, fallAngle }) {
 
   return {
     heightAt,
+    normalAt,
     streamDistance,
     makeMeadowGeometry,
     makeCliffGeometry,

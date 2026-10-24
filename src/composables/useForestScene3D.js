@@ -1,14 +1,22 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { onMounted, onUnmounted, watch } from "vue";
-import { createFoliageMaterials, buildTrees } from "../scene/vegetation.js";
+import { createFoliageMaterials, buildTrees, makeLeafMassGeometry } from "../scene/vegetation.js";
 import { buildFlowers, buildGrass } from "../scene/flora.js";
 import { createPollen, enhanceMaterial, sceneUniforms } from "../scene/materials.js";
 import { createSpray, createWaterMaterial, makeWaterRibbon, waterUniforms } from "../scene/water.js";
 import { createFallingLeaves, createSnowfall } from "../scene/weather.js";
 import { buildVines } from "../scene/vines.js";
 import { createButterflies } from "../scene/butterflies.js";
-import { createIslandTerrain, ISLAND_Z_SCALE, makeBoulderGeometry, makeIsletGeometry, rimPoint } from "../scene/terrain.js";
+import { createBirds } from "../scene/birds.js";
+import { createSkyEnvironment } from "../scene/environment.js";
+import { buildContactShadows } from "../scene/grounding.js";
+import { buildUnderstory } from "../scene/understory.js";
+import { buildColdIsland } from "../scene/coldIsland.js";
+import { createIslandTerrain, makeBoulderGeometry, makeIsletGeometry, rimPoint } from "../scene/terrain.js";
+import { scenes } from "../data/forest.js";
+import { ALPINE_MOODS, POLAR_MOOD } from "../scene/coldMood.js";
+import { createMountainBackdrop } from "../scene/mountainBackdrop.js";
 
 // Direction (in the island's unscaled polar space) where the stream spills off the rim.
 const FALL_ANGLE = Math.atan2(1.8 / 0.75, 3.7);
@@ -30,6 +38,7 @@ const TREE_PALETTES = {
 };
 
 const { smoothstep } = THREE.MathUtils;
+const worldUp = new THREE.Vector3(0, 1, 0);
 
 export function useForestScene3D(canvasRef, viewRef, state, notify) {
   let disposeScene;
@@ -56,13 +65,18 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.04;
+    renderer.toneMappingExposure = 1.1;
     renderer.setClearColor(0x000000, 0);
 
     const scene = new THREE.Scene();
+    const environment = createSkyEnvironment(renderer);
+    scene.environment = environment;
+    scene.environmentIntensity = 0.45;
+    // A very light aerial haze ties the far rim to the CSS sky; the island stays crisp.
+    scene.fog = new THREE.FogExp2(0x9db7a9, 0.011);
     const camera = new THREE.PerspectiveCamera(33, 1, 0.1, 80);
     const cameraTarget = new THREE.Vector3(0, 0.2, 0);
     let cameraYaw = 0.45;
@@ -72,25 +86,35 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     let fitDistance = 16.5;
     let cameraDistance = fitDistance;
     let targetDistance = cameraDistance;
+    let lastScene = null;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    // A distant, camera-facing range behind the floating island. It supplies
+    // mountain scale without allowing a thin 3D ridge end to become a fin.
+    const mountainBackdrop = createMountainBackdrop();
+    mountainBackdrop.visible = false;
+    camera.add(mountainBackdrop);
+    scene.add(camera);
 
-    const ambientLight = new THREE.HemisphereLight(0xeaf4da, 0x423b2d, 1.55);
+    const ambientLight = new THREE.HemisphereLight(0xeaf4da, 0x423b2d, 1.0);
     scene.add(ambientLight);
-    const sunlight = new THREE.DirectionalLight(0xffe5ae, 2.35);
+    const sunlight = new THREE.DirectionalLight(0xffe5ae, 2.8);
     sunlight.position.set(-5, 9, 6);
     sunlight.castShadow = true;
-    sunlight.shadow.mapSize.set(1024, 1024);
-    sunlight.shadow.camera.left = -8;
-    sunlight.shadow.camera.right = 8;
-    sunlight.shadow.camera.top = 8;
-    sunlight.shadow.camera.bottom = -8;
-    sunlight.shadow.normalBias = 0.04;
+    sunlight.shadow.mapSize.set(2048, 2048);
+    sunlight.shadow.camera.left = -6;
+    sunlight.shadow.camera.right = 6;
+    sunlight.shadow.camera.top = 6;
+    sunlight.shadow.camera.bottom = -6;
+    sunlight.shadow.camera.near = 1;
+    sunlight.shadow.camera.far = 28;
+    sunlight.shadow.bias = -0.0002;
+    sunlight.shadow.normalBias = 0.018;
     scene.add(sunlight);
-    const fillLight = new THREE.DirectionalLight(0xa9d5c4, 1.05);
+    const fillLight = new THREE.DirectionalLight(0xa9d5c4, 0.6);
     fillLight.position.set(6, 4, -5);
     scene.add(fillLight);
     // Warm back light silhouettes crowns and grass tips against the sky.
-    const backLight = new THREE.DirectionalLight(0xffd7a0, 1.1);
+    const backLight = new THREE.DirectionalLight(0xffd7a0, 0.7);
     backLight.position.set(3, 3.5, -8);
     scene.add(backLight);
     const nightGlow = new THREE.PointLight(0x9cdbca, 2.2, 12);
@@ -112,15 +136,18 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
       new THREE.Vector3(fallLip.x, 0.19, fallLip.z),
     ]);
     const terrain = createIslandTerrain({ streamCurve, fallAngle: FALL_ANGLE });
-    const { heightAt, streamDistance } = terrain;
+    const { heightAt, normalAt, streamDistance } = terrain;
 
     // Cliff, islets and boulders carry their own vertex colours; the material only tints for mood.
-    const terrainMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      vertexColors: true,
-      roughness: 0.94,
-      flatShading: true,
-    });
+    const terrainMaterial = enhanceMaterial(
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        vertexColors: true,
+        roughness: 0.94,
+        flatShading: true,
+      }),
+      { detail: { scale: 7, normalStrength: 0.1 } },
+    );
     const cliff = new THREE.Mesh(terrain.makeCliffGeometry(), terrainMaterial);
     cliff.name = "cliff";
     cliff.castShadow = true;
@@ -129,7 +156,10 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
 
     const meadow = new THREE.Mesh(
       terrain.makeMeadowGeometry(),
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }),
+      enhanceMaterial(
+        new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }),
+        { detail: { scale: 5, normalStrength: 0.075, stretch: [1, 2.2, 1] } },
+      ),
     );
     meadow.name = "meadow";
     meadow.receiveShadow = true;
@@ -157,8 +187,12 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     stream.name = "stream";
     stream.renderOrder = 1;
     const bankPositions = [];
+    const bankColors = [];
     const bankIndices = [];
     const bankSegments = 110;
+    const wetBank = new THREE.Color(0x34412b);
+    const mossBank = new THREE.Color(0x61764a);
+    const bankTint = new THREE.Color();
     for (let i = 0; i <= bankSegments; i++) {
       const t = i / bankSegments;
       const point = streamCurve.getPoint(t);
@@ -178,6 +212,12 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
         point.x + sideX * halfWidth, inner, point.z + sideZ * halfWidth,
         point.x + sideX * reach, outer(reach), point.z + sideZ * reach,
       );
+      // A dark, damp band right at the waterline fades to moss further up the bank.
+      for (const wetness of [0.16, 1, 1, 0.16]) {
+        bankTint.copy(wetBank).lerp(mossBank, 1 - wetness);
+        bankTint.multiplyScalar(0.86 + Math.sin(t * 57 + wetness * 9) * 0.06);
+        bankColors.push(bankTint.r, bankTint.g, bankTint.b);
+      }
       if (i < bankSegments) {
         const a = i * 4;
         bankIndices.push(a, a + 4, a + 5, a, a + 5, a + 1, a + 2, a + 6, a + 7, a + 2, a + 7, a + 3);
@@ -185,17 +225,70 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     }
     const bankGeometry = new THREE.BufferGeometry();
     bankGeometry.setAttribute("position", new THREE.Float32BufferAttribute(bankPositions, 3));
+    bankGeometry.setAttribute("color", new THREE.Float32BufferAttribute(bankColors, 3));
     bankGeometry.setIndex(bankIndices);
     bankGeometry.computeVertexNormals();
     const streamBanks = new THREE.Mesh(
       bankGeometry,
-      new THREE.MeshStandardMaterial({ color: 0x687754, roughness: 0.98, flatShading: true, side: THREE.DoubleSide }),
+      enhanceMaterial(
+        new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.9, flatShading: true, side: THREE.DoubleSide }),
+        { detail: { scale: 14, normalStrength: 0.05 } },
+      ),
     );
     streamBanks.name = "mossy stream banks";
     island.add(streamBanks);
+
+    // A dark gravel bed underneath the transparent water gives the creek depth.
+    const bedPositions = [];
+    const bedColors = [];
+    const bedIndices = [];
+    const bedTint = new THREE.Color();
+    for (let i = 0; i <= 140; i++) {
+      const t = i / 140;
+      const point = streamCurve.getPoint(t);
+      const tangent = streamCurve.getTangent(t);
+      const tangentLength = Math.hypot(tangent.x, tangent.z) || 1;
+      const sideX = tangent.z / tangentLength;
+      const sideZ = -tangent.x / tangentLength;
+      const halfWidth = streamHalfWidth(t) + 0.06;
+      const y = 0.139 + Math.sin(t * 41 + 0.7) * 0.004 + Math.sin(t * 17) * 0.003;
+      for (const sign of [-1, 1]) {
+        bedPositions.push(
+          point.x + sideX * halfWidth * sign,
+          y,
+          point.z + sideZ * halfWidth * sign,
+        );
+        const gravel = 0.085 + (Math.sin(t * 79 + sign * 3.1) * 0.5 + 0.5) * 0.055;
+        bedTint.setRGB(gravel * 1.08, gravel * 0.98, gravel * 0.72);
+        bedColors.push(bedTint.r, bedTint.g, bedTint.b);
+      }
+      if (i < 140) {
+        const a = i * 2;
+        bedIndices.push(a, a + 2, a + 1, a + 2, a + 3, a + 1);
+      }
+    }
+    const bedGeometry = new THREE.BufferGeometry();
+    bedGeometry.setAttribute("position", new THREE.Float32BufferAttribute(bedPositions, 3));
+    bedGeometry.setAttribute("color", new THREE.Float32BufferAttribute(bedColors, 3));
+    bedGeometry.setIndex(bedIndices);
+    bedGeometry.computeVertexNormals();
+    const streamBed = new THREE.Mesh(
+      bedGeometry,
+      enhanceMaterial(
+        new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.96, side: THREE.DoubleSide }),
+        { detail: { scale: 24, normalStrength: 0.07 } },
+      ),
+    );
+    streamBed.name = "gravel stream bed";
+    streamBed.receiveShadow = true;
+    island.add(streamBed);
     island.add(stream);
-    const creekStoneMaterial = new THREE.MeshStandardMaterial({ color: 0x817d68, vertexColors: true, roughness: 0.92, flatShading: true });
+    const creekStoneMaterial = enhanceMaterial(
+      new THREE.MeshStandardMaterial({ color: 0x817d68, vertexColors: true, roughness: 0.92, flatShading: true }),
+      { detail: { scale: 16, normalStrength: 0.1 } },
+    );
     const creekStoneGeometries = [11, 23, 37].map((seed) => makeBoulderGeometry(seed, 1).scale(0.3, 0.3, 0.3));
+    const creekStoneMarks = [];
     for (const [point, side, size] of [
       [0.7, -1, 0.9], [1.3, 1, 0.6], [2, 1, 1.0], [2.6, -1, 0.55], [3, -1, 0.72],
       [3.6, 1, 0.66], [4, 1, 0.82], [4.6, -1, 0.6], [5, -1, 0.92], [5.4, 1, 0.7],
@@ -206,33 +299,129 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
       const reach = 0.19 + (point % 1) * 0.06;
       stone.position.x = curvePoint.x + tangent.z * side * reach;
       stone.position.z = curvePoint.z - tangent.x * side * reach;
-      stone.position.y = Math.max(0.19, heightAt(stone.position.x, stone.position.z)) + 0.01;
+      stone.position.y = Math.max(0.19, heightAt(stone.position.x, stone.position.z)) - 0.012;
       stone.scale.set(size, 0.7, 0.8);
-      stone.rotation.set(0.2, point * 0.8, 0.12);
+      stone.quaternion.setFromUnitVectors(worldUp, normalAt(stone.position.x, stone.position.z));
+      stone.rotateY(point * 0.8);
       stone.castShadow = true;
       island.add(stone);
+      if (streamDistance(stone.position.x, stone.position.z) < 0.24) {
+        creekStoneMarks.push({ x: stone.position.x, z: stone.position.z, size });
+      }
     }
 
+    // A thin foam collar on the upstream side of each stone makes the water feel
+    // like it is flowing around an obstacle instead of a flat ribbon.
+    if (creekStoneMarks.length) {
+      const foamParts = creekStoneMarks.map(({ x, z, size }) => {
+        const ring = new THREE.RingGeometry(0.04 * size, 0.085 * size, 16);
+        ring.rotateX(-Math.PI / 2);
+        ring.translate(x, 0.198, z);
+        return ring;
+      });
+      const creekFoam = new THREE.Mesh(
+        mergeGeometries(foamParts, false),
+        new THREE.MeshBasicMaterial({
+          color: 0xe6f8f1,
+          transparent: true,
+          opacity: 0.26,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      creekFoam.name = "creek stone foam";
+      creekFoam.renderOrder = 2;
+      island.add(creekFoam);
+    }
+
+    // Small submerged stones show through the water and catch its caustic tint.
+    const bedPebbleCount = window.innerWidth < 700 ? 34 : 64;
+    const bedPebbleDummy = new THREE.Object3D();
+    const bedPebbles = new THREE.InstancedMesh(
+      makeBoulderGeometry(53, 0).scale(0.055, 0.055, 0.055),
+      new THREE.MeshStandardMaterial({ color: 0x5b5f4f, vertexColors: true, roughness: 0.9, flatShading: true }),
+      bedPebbleCount,
+    );
+    for (let i = 0; i < bedPebbleCount; i++) {
+      const t = Math.random() * 0.94;
+      const point = streamCurve.getPoint(t);
+      const tangent = streamCurve.getTangent(t);
+      const offset = (Math.random() - 0.5) * streamHalfWidth(t) * 1.7;
+      const x = point.x + tangent.z * offset;
+      const z = point.z - tangent.x * offset;
+      const size = 0.35 + Math.random() * 0.7;
+      bedPebbleDummy.position.set(x, 0.143 + Math.random() * 0.014, z);
+      bedPebbleDummy.quaternion.setFromUnitVectors(worldUp, normalAt(x, z));
+      bedPebbleDummy.rotateY(Math.random() * Math.PI * 2);
+      bedPebbleDummy.scale.set(size, size * 0.55, size * 0.8);
+      bedPebbleDummy.updateMatrix();
+      bedPebbles.setMatrixAt(i, bedPebbleDummy.matrix);
+      bedPebbles.setColorAt(i, new THREE.Color().setHSL(0.1 + Math.random() * 0.05, 0.08, 0.28 + Math.random() * 0.12));
+    }
+    bedPebbles.receiveShadow = true;
+    bedPebbles.name = "submerged pebbles";
+    island.add(bedPebbles);
+
     const sourceEnd = streamCurve.getPoint(0);
-    const sourceAngle = Math.atan2(sourceEnd.z / ISLAND_Z_SCALE, sourceEnd.x);
-    const waterfallPaths = [
-      terrain.makeWaterfallCurve(),
-      terrain.makeWaterfallCurve({ angle: sourceAngle, streamEnd: sourceEnd }),
-    ];
+    // The creek starts in a spring basin instead of a second waterfall, so the
+    // island no longer looks like it is draining from both ends at once.
+    const spring = new THREE.Group();
+    spring.name = "spring";
+    const springX = sourceEnd.x;
+    const springZ = sourceEnd.z;
+    const springY = 0.201;
+    const springPool = new THREE.Mesh(
+      new THREE.CircleGeometry(0.15, 24).rotateX(-Math.PI / 2),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x2b6a6d,
+        roughness: 0.2,
+        metalness: 0.05,
+        transparent: true,
+        opacity: 0.86,
+        clearcoat: 0.6,
+      }),
+    );
+    springPool.position.set(springX, springY, springZ);
+    springPool.renderOrder = 1;
+    spring.add(springPool);
+    const springFoam = new THREE.Mesh(
+      new THREE.RingGeometry(0.135, 0.18, 24).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xdff6ef, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    springFoam.position.set(springX, springY + 0.002, springZ);
+    springFoam.renderOrder = 2;
+    spring.add(springFoam);
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + 0.4;
+      const stone = new THREE.Mesh(makeBoulderGeometry(300 + i, 1), creekStoneMaterial);
+      stone.position.set(
+        springX + Math.cos(angle) * 0.19,
+        heightAt(springX + Math.cos(angle) * 0.19, springZ + Math.sin(angle) * 0.19) + 0.005,
+        springZ + Math.sin(angle) * 0.19,
+      );
+      stone.scale.set(0.24, 0.16, 0.24);
+      stone.quaternion.setFromUnitVectors(worldUp, normalAt(stone.position.x, stone.position.z));
+      stone.rotateY(angle);
+      stone.castShadow = true;
+      spring.add(stone);
+    }
+    island.add(spring);
+
+    const waterfallPaths = [terrain.makeWaterfallCurve()];
     const waterfalls = [];
     const waterfallSprays = [];
     waterfallPaths.forEach(({ curve, side, outward }, index) => {
       const fallRibbon = makeWaterRibbon(
         curve, 96,
-        (t) => (0.18 + THREE.MathUtils.smoothstep(t, 0.05, 0.9) * 0.23
-          + Math.sin(t * 15 + index) * 0.02 + Math.sin(t * 6 + 0.7) * 0.018) * (index ? 0.88 : 1),
+        (t) => 0.18 + THREE.MathUtils.smoothstep(t, 0.05, 0.9) * 0.23
+          + Math.sin(t * 15 + index) * 0.02 + Math.sin(t * 6 + 0.7) * 0.018,
         null, { side, outward },
       );
       const waterfall = new THREE.Mesh(
         fallRibbon.geometry,
-        createWaterMaterial(sceneUniforms.uTime, { fall: true, speed: index ? 1.45 : 1.6, length: fallRibbon.length }),
+        createWaterMaterial(sceneUniforms.uTime, { fall: true, speed: 1.6, length: fallRibbon.length }),
       );
-      waterfall.name = index ? "source waterfall" : "main waterfall";
+      waterfall.name = "main waterfall";
       waterfall.userData.curve = curve;
       waterfall.renderOrder = 2;
       island.add(waterfall);
@@ -244,13 +433,26 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
       waterfallSprays.push(spray);
     });
 
-    const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x6f553e, vertexColors: true, roughness: 0.95 });
+    const trunkMaterial = enhanceMaterial(
+      new THREE.MeshStandardMaterial({ color: 0x6f553e, vertexColors: true, roughness: 0.95 }),
+      { detail: { scale: 13, normalStrength: 0.1, stretch: [1, 0.45, 1] } },
+    );
     const foliage = createFoliageMaterials(TREE_PALETTES.morning);
     const snowMaterial = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0xe7eee5, roughness: 0.76 }), { rustle: 0.022 });
     const snowBankMaterial = new THREE.MeshStandardMaterial({ color: 0xe7eee5, roughness: 0.8 });
-    const branchMaterial = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x5e4532, roughness: 0.96 }), { snow: 0.6 });
+    const branchMaterial = enhanceMaterial(
+      new THREE.MeshStandardMaterial({ color: 0x5e4532, roughness: 0.96 }),
+      { snow: 0.6, detail: { scale: 17, normalStrength: 0.09, stretch: [1, 0.5, 1] } },
+    );
     const { trees, treeTargets, roots, mossPatches } = buildTrees(TREE_SPOTS, {
-      trunkMaterial, foliage, branchMaterial, heightAt, leafDensity: window.innerWidth < 700 ? 0.55 : 1,
+      trunkMaterial,
+      foliage,
+      branchMaterial,
+      heightAt,
+      normalAt,
+      streamDistance,
+      sunDirection: new THREE.Vector3(-5, 9, 6),
+      leafDensity: window.innerWidth < 700 ? 0.55 : 1,
     });
     trees.forEach((tree) => island.add(tree));
     island.add(roots, mossPatches);
@@ -362,7 +564,10 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     island.add(snowman);
 
     const rockMaterials = [0x73705c, 0x89836a, 0x5f6957].map(
-      (color) => new THREE.MeshStandardMaterial({ color, vertexColors: true, roughness: 1, flatShading: true }),
+      (color) => enhanceMaterial(
+        new THREE.MeshStandardMaterial({ color, vertexColors: true, roughness: 1, flatShading: true }),
+        { detail: { scale: 15, normalStrength: 0.1 } },
+      ),
     );
     const rockGeometries = [3, 7, 13].map((seed) => makeBoulderGeometry(seed));
     const interactiveRocks = [];
@@ -372,9 +577,10 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
       [-1.55, 2.45, 0.42, 2], [1.2, -2.75, 0.5, 1], [-0.2, 2.9, 0.34, 0], [-4.15, 0.45, 0.4, 2],
     ]) {
       const rock = new THREE.Mesh(rockGeometries[Math.abs(Math.round(x * 3 + z)) % rockGeometries.length], rockMaterials[index]);
-      rock.position.set(x, heightAt(x, z) + 0.02 * scale, z);
+      rock.position.set(x, heightAt(x, z) - 0.05 * scale, z);
+      rock.quaternion.setFromUnitVectors(worldUp, normalAt(x, z));
+      rock.rotateY(x * 0.4 + z);
       rock.scale.set(scale, scale * 0.72, scale * 0.88);
-      rock.rotation.set(0, x * 0.4 + z, 0);
       rock.userData.baseY = rock.position.y;
       rock.userData.baseScale = rock.scale.clone();
       rock.userData.tapAt = 0;
@@ -402,6 +608,20 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
       snowSurfaces.push({ attribute: isletColors, base: isletColors.array.slice(), weights: rock.geometry.userData.snowWeights });
       island.add(rock);
     }
+
+    // A few mossy tufts on the floating islets keep their tops from reading as flat discs.
+    interactiveRocks.forEach((islet, index) => {
+      if (islet.userData.floatPhase === undefined) return;
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 + index;
+        const tuft = new THREE.Mesh(makeLeafMassGeometry(720 + index * 11 + i, 1), foliage.crowns[(index + i) % foliage.crowns.length]);
+        tuft.position.set(Math.cos(angle) * 0.13, 0.17, Math.sin(angle) * 0.1);
+        tuft.scale.set(0.075, 0.045, 0.075);
+        tuft.rotation.y = angle;
+        tuft.castShadow = true;
+        islet.add(tuft);
+      }
+    });
 
     const mistMaterial = new THREE.ShaderMaterial({
       uniforms: {
@@ -451,7 +671,7 @@ void main() {
       const cloud = new THREE.Mesh(mistGeometry, material);
       const angle = index * 2.399;
       const radius = 1.05 + (index % 4) * 0.72;
-      cloud.position.set(Math.cos(angle) * radius, 0.48 + index % 5 * 0.4, Math.sin(angle) * radius * 0.72);
+      cloud.position.set(Math.cos(angle) * radius, 0.8 + index % 5 * 0.42, Math.sin(angle) * radius * 0.72);
       cloud.scale.set(3.0 + index % 3 * 0.62, 1.0 + index % 2 * 0.38, 1);
       cloud.userData.baseX = cloud.position.x;
       cloud.userData.baseY = cloud.position.y;
@@ -462,10 +682,11 @@ void main() {
     });
     mistMaterial.dispose();
 
-    // Flower drifts and grass avoid trunks so nothing sprouts through a tree.
-    const trunkSpots = TREE_SPOTS.map(([x, z]) => [x, z]);
+    // Flower drifts and grass avoid trunks and boulders so nothing sprouts through them.
+    const trunkSpots = TREE_SPOTS.map(([x, z, scale]) => [x, z, 0.075 * scale]);
+    const plantingAvoid = [...trunkSpots, ...interactiveRocks.map((rock) => [rock.position.x, rock.position.z, 0.12 * (rock.userData.baseScale?.x || 1)])];
     const flowerBeds = buildFlowers({
-      perType: window.innerWidth < 700 ? 9 : 16, heightAt, streamDistance, rimPoint, avoid: trunkSpots,
+      perType: window.innerWidth < 700 ? 9 : 16, heightAt, normalAt, streamDistance, rimPoint, avoid: plantingAvoid,
     });
     island.add(flowerBeds);
     const flowers = [flowerBeds];
@@ -473,10 +694,30 @@ void main() {
     island.add(butterflies.group);
 
     const grass = buildGrass({
-      count: window.innerWidth < 700 ? 2600 : 5200, heightAt, streamDistance, rimPoint, avoid: trunkSpots,
+      count: window.innerWidth < 700 ? 1800 : 4200, heightAt, normalAt, streamDistance, rimPoint, avoid: plantingAvoid,
     });
     island.add(grass);
     const grassDummy = new THREE.Object3D();
+
+    const groundRocks = interactiveRocks.filter((rock) => rock.userData.floatPhase === undefined);
+    const understory = buildUnderstory({
+      heightAt,
+      normalAt,
+      streamDistance,
+      treeSpots: TREE_SPOTS,
+      rockSpots: groundRocks.map((rock) => [rock.position.x, rock.position.z, rock.userData.baseScale?.x || 1]),
+      foliage,
+      trunkMaterial,
+      branchMaterial,
+    });
+    island.add(understory.group);
+
+    const cold = buildColdIsland();
+    cold.group.visible = false;
+    scene.add(cold.group);
+
+    const birds = createBirds(3);
+    island.add(birds.group);
 
     const pollen = createPollen(window.innerWidth < 700 ? 50 : 90);
     island.add(pollen);
@@ -485,7 +726,10 @@ void main() {
     const pebbleCount = window.innerWidth < 700 ? 40 : 70;
     const pebbles = new THREE.InstancedMesh(
       makeBoulderGeometry(41, 0).scale(0.16, 0.16, 0.16),
-      new THREE.MeshStandardMaterial({ color: 0x8a8670, vertexColors: true, roughness: 0.95, flatShading: true }),
+      enhanceMaterial(
+        new THREE.MeshStandardMaterial({ color: 0x8a8670, vertexColors: true, roughness: 0.95, flatShading: true }),
+        { detail: { scale: 20, normalStrength: 0.05 } },
+      ),
       pebbleCount,
     );
     for (let i = 0; i < pebbleCount; i++) {
@@ -503,8 +747,9 @@ void main() {
         ({ x, z } = rimPoint(Math.random() * Math.PI * 2, 0.3 + Math.random() * 0.62));
       }
       const size = 0.45 + Math.random() * 0.9;
-      grassDummy.position.set(x, heightAt(x, z) + 0.008 * size, z);
-      grassDummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+      grassDummy.position.set(x, heightAt(x, z) + 0.002, z);
+      grassDummy.quaternion.setFromUnitVectors(worldUp, normalAt(x, z));
+      grassDummy.rotateY(Math.random() * Math.PI * 2);
       grassDummy.scale.set(size, size * (0.5 + Math.random() * 0.3), size * (0.7 + Math.random() * 0.4));
       grassDummy.updateMatrix();
       pebbles.setMatrixAt(i, grassDummy.matrix);
@@ -512,6 +757,30 @@ void main() {
     }
     pebbles.receiveShadow = true;
     island.add(pebbles);
+
+    // Soft contact shadows under trees and boulders. They are the cheapest cue
+    // that these objects actually rest on the meadow instead of hovering over it.
+    const shadowEntries = [];
+    trees.forEach((tree) => {
+      const scale = tree.userData.baseScale;
+      const broadleaf = tree.userData.species === "broadleaf";
+      shadowEntries.push({
+        x: tree.position.x,
+        z: tree.position.z,
+        radius: (broadleaf ? 0.44 : 0.36) * scale,
+        opacity: broadleaf ? 0.52 : 0.46,
+      });
+    });
+    interactiveRocks.forEach((rock) => {
+      if (rock.userData.floatPhase !== undefined) return;
+      shadowEntries.push({
+        x: rock.position.x,
+        z: rock.position.z,
+        radius: (rock.userData.baseScale?.x || 1) * 0.32,
+        opacity: 0.38,
+      });
+    });
+    island.add(buildContactShadows([...shadowEntries, ...understory.shadowEntries], heightAt));
 
     const fireflyBodyGeometry = new THREE.SphereGeometry(1, 12, 8);
     const fireflyBodyMaterial = new THREE.MeshStandardMaterial({ color: 0x89704a, roughness: 0.62, metalness: 0.08 });
@@ -799,6 +1068,7 @@ void main() {
       color(branchMaterial, "color", night ? 0x2a2420 : rainy ? 0x4c4741 : snowing ? 0x52524a : 0x3e322a);
       number(branchMaterial, "roughness", rainy ? 0.55 : 0.88);
       butterflies.group.visible = !night && !rainy && !snowing;
+      birds.group.visible = !night && !rainy && !snowing && !reducedMotion.matches;
       targetSnowCoverage = snowing ? 1 : 0;
 
       snowBanks.forEach((bank) => { bank.visible = snowing; });
@@ -819,28 +1089,35 @@ void main() {
       fallingLeaves.setPalette(afternoon);
       rainMesh.visible = rainy;
       fireflies.forEach((fly) => { fly.visible = night; });
-      flowers.forEach((flower) => { flower.visible = !snowing && !rainy; });
+      flowers.forEach((flower) => { flower.visible = !snowing && !rainy && !night; });
       pollen.visible = !night && !rainy && !snowing;
       number(pollen.material.uniforms.uOpacity, "value", misty ? 0.45 : afternoon ? 0.95 : 0.75);
       number(sceneUniforms.uWind, "value", reducedMotion.matches ? 0 : rainy ? 2.2 : snowing ? 0.5 : 1);
       number(sceneUniforms.uRimStrength, "value", night ? 0.3 : rainy ? 0.18 : snowing ? 0.25 : afternoon ? 0.6 : 0.45);
       color(sceneUniforms.uRimColor, "value", night ? 0x7fc8c0 : snowing ? 0xdbe8f0 : afternoon ? 0xffd08a : 0xffe2b0);
-      number(backLight, "intensity", night ? 0.35 : rainy ? 0.42 : afternoon ? 1.5 : 1.1);
+      number(backLight, "intensity", night ? 0.25 : rainy ? 0.35 : afternoon ? 1.0 : snowing ? 0.55 : 0.7);
       color(backLight, "color", rainy ? 0xd4b98f : snowing ? 0xd3dcff : 0xffd7a0);
       // Frosted, muted blades poke through the snow instead of staying spring-green.
-      color(grass.material, "color", rainy ? 0xb2bcb6 : 0xffffff);
+      color(grass.material, "color", night ? 0x647872 : rainy ? 0xb2bcb6 : 0xf2f6e8);
+      color(understory.fernMaterial, "color", night ? 0x32443a : rainy ? 0x4f6152 : snowing ? 0x6f7b6c : 0xffffff);
+      number(understory.fernMaterial, "roughness", rainy ? 0.45 : 0.72);
+      color(understory.litterMaterial, "color", night ? 0x6a5d4c : rainy ? 0x9a907c : 0xffffff);
       number(sceneUniforms.uSnow, "value", snowing ? 1 : 0);
-      number(ambientLight, "intensity", night ? 0.55 : rainy ? 1.02 : 1.55);
+      number(ambientLight, "intensity", night ? 0.32 : rainy ? 0.7 : snowing ? 0.9 : afternoon ? 0.95 : 0.9);
       color(ambientLight, "color", night ? 0x7d9db4 : rainy ? 0xc4d0d5 : snowing ? 0xe7f1f6 : 0xeaf4da);
-      number(sunlight, "intensity", night ? 0.75 : rainy ? 1.05 : afternoon ? 2.75 : 2.35);
+      number(sunlight, "intensity", night ? 0.48 : rainy ? 1.15 : afternoon ? 3.2 : snowing ? 1.9 : 3.0);
       color(sunlight, "color", night ? 0x9bb9db : snowing ? 0xe0e4ff : rainy ? 0xc5cdd2 : afternoon ? 0xfff1ce : 0xffd79d);
       number(sunlight.position, "x", afternoon ? -2.5 : -5);
       number(sunlight.position, "y", afternoon ? 11 : 8);
-      number(fillLight, "intensity", night ? 0.7 : rainy ? 0.82 : 1.05);
+      number(fillLight, "intensity", night ? 0.4 : rainy ? 0.45 : 0.5);
       color(fillLight, "color", night ? 0x5685ba : rainy ? 0x8da4ad : snowing ? 0xb7d3f6 : 0xa9d5c4);
       number(nightGlow, "intensity", night ? 3.4 : 0.4);
-      color(meadow.material, "color", rainy ? 0xb1bfba : 0xffffff);
-      color(terrainMaterial, "color", rainy ? 0xa5afb0 : snowing ? 0xdfe3e2 : 0xffffff);
+      const fogColor = night ? 0x243f47 : rainy ? 0x6f8589 : snowing ? 0x94adb7 : afternoon ? 0xa8bcaa : 0x9db7a9;
+      color(scene.fog, "color", fogColor);
+      number(scene.fog, "density", night ? 0.005 : rainy ? 0.007 : snowing ? 0.006 : afternoon ? 0.003 : 0.004);
+      number(scene, "environmentIntensity", night ? 0.08 : rainy ? 0.12 : snowing ? 0.22 : afternoon ? 0.18 : 0.15);
+      color(meadow.material, "color", night ? 0x637570 : rainy ? 0xa8b8ab : 0xe8efdc);
+      color(terrainMaterial, "color", night ? 0x6d7d7a : rainy ? 0xa5afb0 : snowing ? 0xdfe3e2 : 0xffffff);
       color(waterUniforms.uDeep, "value", night ? 0x0f3438 : rainy ? 0x304851 : snowing ? 0x3f6e72 : 0x1f5a55);
       color(waterUniforms.uShallow, "value", night ? 0x2a6560 : rainy ? 0x6d898d : snowing ? 0x8bb7b5 : 0x5fa59a);
       color(waterUniforms.uSky, "value", night ? 0x4a6680 : rainy ? 0x9dabb0 : snowing ? 0xe6eef2 : afternoon ? 0xf1e2c4 : 0xcfe3da);
@@ -848,12 +1125,68 @@ void main() {
       number(waterUniforms.uGlow, "value", night ? 0.6 : 0);
       number(waterUniforms.uRain, "value", rainy ? 1 : 0);
       number(snowfall.material.uniforms.uGust, "value", misty ? 0.4 : 1);
-      const mistOpacity = misty ? 0.58 : rainy ? 0.42 : 0;
+      const mistOpacity = misty ? 0.34 : rainy ? 0.26 : 0;
       mistClouds.forEach((cloud) => {
         number(cloud.material.uniforms.uOpacity, "value", mistOpacity);
         color(cloud.material.uniforms.uColor, "value", rainy ? (night ? 0x9baab3 : 0xcbd4d8) : 0xe3e9e7);
       });
-      number(renderer, "toneMappingExposure", night ? 0.94 : rainy ? 0.96 : snowing ? 0.98 : 1.04);
+      number(renderer, "toneMappingExposure", night ? 0.88 : rainy ? 0.98 : snowing ? 1.02 : afternoon ? 1.06 : 1.05);
+
+      // The cold island is a separate diorama. Forest mood still updates behind
+      // the scenes, but these values intentionally win while it is visible.
+      const coldScene = state.scene === "alpine" || state.scene === "aurora";
+      const alpine = state.scene === "alpine";
+      const polar = state.scene === "aurora";
+      const coldNight = polar || (alpine && state.phase === "night");
+      const blueHour = alpine && state.phase === "morning";
+      const dusk = alpine && state.phase === "afternoon";
+      const coldMood = polar
+        ? POLAR_MOOD
+        : coldNight
+          ? ALPINE_MOODS.night
+          : blueHour
+            ? ALPINE_MOODS.morning
+            : ALPINE_MOODS.afternoon;
+      island.visible = !coldScene;
+      cold.group.visible = coldScene;
+      mountainBackdrop.visible = alpine;
+      if (coldScene) {
+        cold.setMode(state.scene, state.phase, coldMood);
+        number(sceneUniforms.uIce, "value", polar ? 0.99 : 0.96);
+        number(sceneUniforms.uSnow, "value", 1);
+        number(nightGlow, "intensity", coldNight ? 0.22 : 0.35);
+        number(ambientLight, "intensity", coldMood.ambient.intensity);
+        color(ambientLight, "color", coldMood.ambient.color);
+        color(ambientLight, "groundColor", coldMood.ambient.ground);
+        number(sunlight, "intensity", coldMood.sun.intensity);
+        color(sunlight, "color", coldMood.sun.color);
+        number(sunlight.position, "x", coldMood.sun.x);
+        number(sunlight.position, "y", coldMood.sun.y);
+        number(sunlight.position, "z", coldMood.sun.z);
+        number(fillLight, "intensity", coldMood.fill.intensity);
+        color(fillLight, "color", coldMood.fill.color);
+        number(backLight, "intensity", coldMood.back.intensity);
+        color(backLight, "color", coldMood.back.color);
+        color(scene.fog, "color", coldMood.fog.color);
+        number(scene.fog, "density", coldMood.fog.density);
+        number(scene, "environmentIntensity", coldMood.environment);
+        number(renderer, "toneMappingExposure", coldMood.exposure);
+      } else {
+        color(ambientLight, "groundColor", 0x423b2d);
+      }
+      if (lastScene !== state.scene) {
+        const view = scenes[state.scene]?.view;
+        if (view) {
+          targetYaw = view.yaw;
+          targetPitch = view.pitch;
+          targetDistance = fitDistance * view.zoom;
+        } else {
+          targetYaw = 0.45;
+          targetPitch = 0.48;
+          targetDistance = fitDistance;
+        }
+        lastScene = state.scene;
+      }
       dirty = true;
     }
     applySceneMood();
@@ -1378,6 +1711,14 @@ void main() {
           if (cloud.material.uniforms.uOpacity.value > 0.005) moving = true;
         });
         if (butterflies.group.visible) butterflies.update(timeStep, sceneUniforms.uTime.value, { wind: sceneUniforms.uWind.value });
+        if (birds.group.visible) {
+          birds.update(timeStep, sceneUniforms.uTime.value);
+          moving = true;
+        }
+        if (cold.group.visible) {
+          cold.update(sceneUniforms.uTime.value);
+          moving = true;
+        }
         if (fallingLeaves.mesh.visible) {
           fallingLeaves.update(timeStep, state.weather === "rain" ? 2.4 : 1);
           moving = true;
@@ -1488,6 +1829,7 @@ void main() {
       geometries.add(sparkGeometry);
       geometries.forEach((geometry) => geometry.dispose());
       materials.forEach((material) => material.dispose());
+      if (scene.environment) scene.environment.dispose();
       renderer.dispose();
       state.threeAvailable = false;
     };

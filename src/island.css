@@ -260,3 +260,52 @@ body { overflow: hidden; overscroll-behavior: none; }
 @media (prefers-reduced-motion: reduce) {
   .island-chrome { transition: none; }
 }
+
+/* Six-scene switcher and the alpine time toggle. */
+.island-bottom { width: min(760px, calc(100% - 40px)); }
+.island-scene-switcher { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.island-scene-switcher button { padding: 12px 5px 10px; font-size: 11px; }
+.island-scene-switcher button > svg { width: 20px; height: 20px; }
+.island-time-switch {
+  display: flex;
+  width: max-content;
+  gap: 3px;
+  margin-top: 14px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #173d3024;
+  border: 1px solid #fff3;
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+.island-time-switch button {
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: #dce8ef;
+  background: transparent !important;
+  opacity: 0.68;
+}
+.island-time-switch button.selected { background: #ffffff1f !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; opacity: 1; font-weight: 600; box-shadow: inset 0 0 0 1px #ffffff70; }
+.island-time-switch button:disabled { opacity: 0.35; cursor: not-allowed; }
+@media (max-width: 900px) {
+  .island-bottom { width: min(620px, calc(100% - 30px)); }
+  .island-scene-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .island-gesture-hint { bottom: 226px; }
+  .island-session { bottom: 226px; }
+}
+@media (max-width: 700px) {
+  .island-bottom { width: calc(100% - 28px); }
+  .island-scene-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .island-scene-switcher button { padding: 10px 4px 8px; gap: 6px; font-size: 10px; }
+  .island-gesture-hint { bottom: 232px; }
+  .island-session { bottom: 232px; }
+  .island-time-switch { margin-top: 10px; }
+}
+@media (max-height: 520px) and (min-width: 681px) {
+  .island-bottom { width: 620px; }
+  .island-scene-switcher button { padding: 6px 3px; font-size: 10px; }
+  .island-scene-switcher button > svg { width: 17px; height: 17px; }
+  .island-gesture-hint { display: none; }
+  .island-session { bottom: 20px; }
+}

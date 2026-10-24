@@ -31,6 +31,37 @@ export const scenes = {
     phase: "morning",
     weather: "snow",
   },
+  alpine: {
+    title: "雪境木屋",
+    subtitle: "雪落在屋檐上，屋里亮着一盏灯",
+    kicker: "A CABIN IN THE SNOW",
+    description: "把脚步放慢，听雪落在木屋和松枝上。",
+    phase: "afternoon",
+    weather: "snow",
+    conditions: {
+      morning: "蓝调清晨 · 飘雪",
+      afternoon: "黄昏 · 飘雪",
+      night: "夜晚灯火 · 飘雪",
+    },
+    phaseLabels: { morning: "蓝调清晨", afternoon: "黄昏暖窗", night: "夜晚灯火" },
+    icon: "cabin",
+    biome: "alpine",
+    view: { yaw: 0.32, pitch: 0.32, zoom: 1.0 },
+  },
+  aurora: {
+    title: "极光冰原",
+    subtitle: "冰川尽头，木屋亮着一盏灯",
+    kicker: "LIGHTS OVER THE ICE",
+    description: "在极夜的冰原上，等一束光慢慢落下。",
+    phase: "night",
+    weather: "clear",
+    conditions: { night: "极夜 · 极光" },
+    phaseLabels: { night: "极夜" },
+    lockedPhase: true,
+    icon: "aurora",
+    biome: "antarctic",
+    view: { yaw: -0.2, pitch: 0.26, zoom: 1.03 },
+  },
 };
 
 export const phaseNames = { morning: "晨间", afternoon: "午后", night: "夜晚" };
