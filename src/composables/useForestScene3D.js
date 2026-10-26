@@ -16,7 +16,6 @@ import { buildColdIsland } from "../scene/coldIsland.js";
 import { createIslandTerrain, makeBoulderGeometry, makeIsletGeometry, rimPoint } from "../scene/terrain.js";
 import { scenes } from "../data/forest.js";
 import { ALPINE_MOODS, POLAR_MOOD } from "../scene/coldMood.js";
-import { createMountainBackdrop } from "../scene/mountainBackdrop.js";
 
 // Direction (in the island's unscaled polar space) where the stream spills off the rim.
 const FALL_ANGLE = Math.atan2(1.8 / 0.75, 3.7);
@@ -79,6 +78,10 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     scene.fog = new THREE.FogExp2(0x9db7a9, 0.011);
     const camera = new THREE.PerspectiveCamera(33, 1, 0.1, 80);
     const cameraTarget = new THREE.Vector3(0, 0.2, 0);
+    const centerTargetX = 0;
+    const centerTargetZ = 0;
+    let targetTargetX = centerTargetX;
+    let targetTargetZ = centerTargetZ;
     let targetTargetY = cameraTarget.y;
     let cameraYaw = 0.45;
     let targetYaw = cameraYaw;
@@ -89,12 +92,6 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     let targetDistance = cameraDistance;
     let lastScene = null;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    // A distant, camera-facing range behind the floating island. It supplies
-    // mountain scale without allowing a thin 3D ridge end to become a fin.
-    const mountainBackdrop = createMountainBackdrop();
-    mountainBackdrop.visible = false;
-    camera.add(mountainBackdrop);
-    scene.add(camera);
 
     const ambientLight = new THREE.HemisphereLight(0xeaf4da, 0x423b2d, 1.0);
     scene.add(ambientLight);
@@ -1014,11 +1011,19 @@ void main() {
     function updateCamera() {
       const horizontal = Math.cos(cameraPitch) * cameraDistance;
       camera.position.set(
-        Math.sin(cameraYaw) * horizontal,
+        cameraTarget.x + Math.sin(cameraYaw) * horizontal,
         Math.sin(cameraPitch) * cameraDistance + cameraTarget.y,
-        Math.cos(cameraYaw) * horizontal,
+        cameraTarget.z + Math.cos(cameraYaw) * horizontal,
       );
       camera.lookAt(cameraTarget);
+    }
+    function minCameraDistance() { return Math.max(3.6, fitDistance * 0.22); }
+    function maxCameraDistance() { return fitDistance * 1.45; }
+    function focusOnDetail(point, distanceRatio = 0.38) {
+      targetTargetX = point.x;
+      targetTargetY = point.y + 0.015;
+      targetTargetZ = point.z;
+      targetDistance = Math.min(targetDistance, Math.max(minCameraDistance(), fitDistance * distanceRatio));
     }
     function currentView() {
       return scenes[state.scene]?.view;
@@ -1037,6 +1042,8 @@ void main() {
       targetYaw = view?.yaw ?? 0.45;
       targetPitch = view?.pitch ?? 0.48;
       targetDistance = fitDistance * (view?.zoom ?? 1);
+      targetTargetX = centerTargetX;
+      targetTargetZ = centerTargetZ;
       targetTargetY = view?.targetY ?? 0.2;
       clampOrbitTargets();
       dirty = true;
@@ -1171,7 +1178,6 @@ void main() {
             : ALPINE_MOODS.afternoon;
       island.visible = !coldScene;
       cold.group.visible = coldScene;
-      mountainBackdrop.visible = alpine;
       if (coldScene) {
         cold.setMode(state.scene, state.phase, coldMood);
         number(sceneUniforms.uIce, "value", polar ? 0.99 : 0.96);
@@ -1202,11 +1208,15 @@ void main() {
           targetYaw = view.yaw;
           targetPitch = view.pitch;
           targetDistance = fitDistance * view.zoom;
+          targetTargetX = centerTargetX;
+          targetTargetZ = centerTargetZ;
           targetTargetY = view.targetY ?? 0.2;
         } else {
           targetYaw = 0.45;
           targetPitch = 0.48;
           targetDistance = fitDistance;
+          targetTargetX = centerTargetX;
+          targetTargetZ = centerTargetZ;
           targetTargetY = 0.2;
         }
         clampOrbitTargets();
@@ -1318,6 +1328,7 @@ void main() {
       if (coldScene) {
         const coldHit = raycaster.intersectObjects(coldTargets(), true)[0];
         if (coldHit) {
+          focusOnDetail(coldHit.point, 0.4);
           const action = cold.interact(coldHit);
           const tint = action === "aurora" ? 0x72ffd2 : action === "glacier" ? 0xbdefff : 0xffd39a;
           burstAt(coldHit.point, true, tint);
@@ -1327,6 +1338,7 @@ void main() {
       }
       const snowmanHit = snowman.visible ? raycaster.intersectObject(snowman, true)[0] : null;
       if (snowmanHit) {
+        focusOnDetail(snowmanHit.point, 0.34);
         snowman.userData.reactionUntil = performance.now() + 950;
         gatherFireflies(snowmanHit.point);
         burstAt(snowmanHit.point, true);
@@ -1353,6 +1365,7 @@ void main() {
       }
       const treeHit = raycaster.intersectObjects(treeTargets, false)[0];
       if (treeHit) {
+        focusOnDetail(treeHit.point, 0.42);
         const tree = treeHit.object.userData.tree;
         tree.userData.bloomUntil = performance.now() + 1100;
         tree.userData.tapAt = performance.now();
@@ -1363,6 +1376,7 @@ void main() {
       }
       const rockHit = raycaster.intersectObjects(interactiveRocks, false)[0];
       if (rockHit) {
+        focusOnDetail(rockHit.point, 0.42);
         rockHit.object.userData.tapAt = performance.now();
         gatherFireflies(rockHit.point);
         burstAt(rockHit.point, state.weather === "snow", 0xd6c99a);
@@ -1371,6 +1385,9 @@ void main() {
       }
       const flowerHit = raycaster.intersectObjects(flowerBeds.children, false)[0];
       if (flowerHit) {
+        // Focus the clicked bloom so its sculpted petals, pollen disc and leaves
+        // can be inspected at close range; Home returns to the full island.
+        focusOnDetail(flowerHit.point, 0.31);
         gatherFireflies(flowerHit.point);
         const localPoint = flowerBeds.worldToLocal(flowerHit.point.clone());
         butterflies.attract(localPoint);
@@ -1396,6 +1413,7 @@ void main() {
       }
       const streamHit = raycaster.intersectObject(stream, false)[0];
       if (streamHit) {
+        focusOnDetail(streamHit.point, 0.4);
         gatherFireflies(streamHit.point);
         addRipple(streamHit.point, 0x9edfd7);
         splashAt(streamHit.point);
@@ -1404,6 +1422,7 @@ void main() {
       }
       const waterfallHit = raycaster.intersectObjects(waterfalls, false)[0];
       if (waterfallHit) {
+        focusOnDetail(waterfallHit.point, 0.4);
         gatherFireflies(waterfallHit.point);
         const impact = waterfallHit.object.localToWorld(waterfallHit.object.userData.curve.getPoint(1).clone());
         addRipple(impact, 0xb8eee7);
@@ -1447,7 +1466,7 @@ void main() {
       if (activePointers.size >= 2) {
         const [a, b] = [...activePointers.values()];
         const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
-        targetDistance = THREE.MathUtils.clamp(pinchZoomStart * pinchDistanceStart / distance, fitDistance * 0.76, fitDistance * 1.38);
+        targetDistance = THREE.MathUtils.clamp(pinchZoomStart * pinchDistanceStart / distance, minCameraDistance(), maxCameraDistance());
         dirty = true;
         return;
       }
@@ -1501,7 +1520,7 @@ void main() {
     function onPointerLeave() { hoverTree = null; hoverRock = null; hoverFirefly = null; hoverCold = null; hoverInteractive = false; dirty = true; }
     function onWheel(event) {
       const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? view.clientHeight : 1);
-      targetDistance = THREE.MathUtils.clamp(targetDistance + delta * 0.0005 * fitDistance, fitDistance * 0.76, fitDistance * 1.38);
+      targetDistance = THREE.MathUtils.clamp(targetDistance + delta * 0.0005 * fitDistance, minCameraDistance(), maxCameraDistance());
       dirty = true;
       event.preventDefault();
     }
@@ -1512,8 +1531,8 @@ void main() {
       else if (event.key === "ArrowRight") targetYaw += 0.15;
       else if (event.key === "ArrowUp") targetPitch += 0.08;
       else if (event.key === "ArrowDown") targetPitch -= 0.08;
-      else if (["+", "="].includes(event.key)) targetDistance = Math.max(fitDistance * 0.76, targetDistance - fitDistance * 0.06);
-      else if (event.key === "-") targetDistance = Math.min(fitDistance * 1.38, targetDistance + fitDistance * 0.06);
+      else if (["+", "="].includes(event.key)) targetDistance = Math.max(minCameraDistance(), targetDistance - fitDistance * 0.06);
+      else if (event.key === "-") targetDistance = Math.min(maxCameraDistance(), targetDistance + fitDistance * 0.06);
       else if (event.key === "Home") resetCameraToScene();
       else {
         const rect = canvas.getBoundingClientRect();
@@ -1618,16 +1637,20 @@ void main() {
       }
       waterUniforms.uSunDir.value.copy(sunlight.position).normalize();
       sceneUniforms.uSunView.value.copy(waterUniforms.uSunDir.value).transformDirection(camera.matrixWorldInverse);
-      if (cameraYaw !== targetYaw || cameraPitch !== targetPitch || cameraDistance !== targetDistance || cameraTarget.y !== targetTargetY) {
+      if (cameraYaw !== targetYaw || cameraPitch !== targetPitch || cameraDistance !== targetDistance || cameraTarget.x !== targetTargetX || cameraTarget.y !== targetTargetY || cameraTarget.z !== targetTargetZ) {
         const cameraBlend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 5.2);
         cameraYaw += (targetYaw - cameraYaw) * cameraBlend;
         cameraPitch += (targetPitch - cameraPitch) * cameraBlend;
         cameraDistance += (targetDistance - cameraDistance) * cameraBlend;
+        cameraTarget.x += (targetTargetX - cameraTarget.x) * cameraBlend;
         cameraTarget.y += (targetTargetY - cameraTarget.y) * cameraBlend;
+        cameraTarget.z += (targetTargetZ - cameraTarget.z) * cameraBlend;
         if (Math.abs(cameraYaw - targetYaw) < 0.001) cameraYaw = targetYaw;
         if (Math.abs(cameraPitch - targetPitch) < 0.001) cameraPitch = targetPitch;
         if (Math.abs(cameraDistance - targetDistance) < 0.01) cameraDistance = targetDistance;
+        if (Math.abs(cameraTarget.x - targetTargetX) < 0.002) cameraTarget.x = targetTargetX;
         if (Math.abs(cameraTarget.y - targetTargetY) < 0.002) cameraTarget.y = targetTargetY;
+        if (Math.abs(cameraTarget.z - targetTargetZ) < 0.002) cameraTarget.z = targetTargetZ;
         updateCamera();
         moving = true;
       }

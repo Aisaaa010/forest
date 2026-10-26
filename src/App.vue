@@ -97,9 +97,9 @@ const conditionText = computed(
   () => scene.value.conditions?.[state.phase] || `${phaseNames[state.phase]} · ${weatherNames[state.weather]}`,
 );
 const interactionHint = computed(() => {
-  if (state.scene === "alpine") return "轻触木屋的窗、烟囱或灯串，发现小惊喜";
-  if (state.scene === "aurora") return "轻触冰墙、小屋或极光，看看它们如何回应";
-  return "轻触树木、花朵、水面或雪人，发现小惊喜";
+  if (state.scene === "alpine") return "点木屋近看细节；轻触窗、烟囱或灯串";
+  if (state.scene === "aurora") return "点冰墙或科考屋近看；轻触极光触发回应";
+  return "点花、树、溪流或雪人近看细节；轻触发现回应";
 });
 const forestView = ref(null),
   threeCanvas = ref(null),
@@ -447,8 +447,9 @@ onUnmounted(() => {
           id="forest-3d-canvas"
           ref="threeCanvas"
           tabindex="0"
-          aria-label="拖动旋转岛屿，滚轮或双指缩放；点击树木、花朵、水面或雪人触发互动。回车键在岛上唤起微光。"
+          aria-label="拖动旋转岛屿，滚轮或双指缩放；点击花朵、树木、水面、雪人、小屋、冰墙或极光，会平滑移动视角近看细节并触发互动。按 Home 键回到整岛视角，按 Enter 键唤起微光。"
         ></canvas>
+        <div class="island-global-snow" aria-hidden="true"></div>
         <div v-if="!state.threeAvailable" class="island-unavailable" role="status">
           <ForestIcon name="tree" />
           <p>岛屿正在准备中</p>
@@ -499,7 +500,7 @@ onUnmounted(() => {
           <button id="immersive" ref="immersiveButton" @click="immersed = true"><ForestIcon name="expand" /><span>沉浸</span></button>
         </div>
       </div>
-      <p class="island-gesture-hint island-chrome" :inert="immersed">拖动环绕 · 滚轮 / 双指缩放<br /><span>{{ interactionHint }}</span></p>
+      <p class="island-gesture-hint island-chrome" :inert="immersed">拖动环绕 · 滚轮 / 双指缩放<br /><span>{{ interactionHint }} · Home 回到全景</span></p>
       <div class="island-session island-chrome" :inert="immersed"><span>在岛上停留</span><strong id="session-time">{{ sessionTime }}</strong><small v-if="focusRunning">专注 {{ focusTimeLabel }}</small><small v-if="sleepRunning">声音将在 {{ sleepTimeLabel }} 后停止</small></div>
       <button v-show="immersed" id="leave-immersive" ref="leaveImmersiveButton" class="island-exit" @click="immersed = false"><ForestIcon name="close" />显示控件</button>
     </main>

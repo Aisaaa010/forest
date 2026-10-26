@@ -309,3 +309,66 @@ body { overflow: hidden; overscroll-behavior: none; }
   .island-gesture-hint { display: none; }
   .island-session { bottom: 20px; }
 }
+
+/* Full-canvas snow for alpine and snow scenes. The 3D flakes hug the island;
+   these CSS layers extend the same weather across the whole viewport. */
+.island-global-snow {
+  position: absolute;
+  inset: -12% -8%;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 900ms ease;
+  background-image:
+    radial-gradient(circle at 18% 24%, #ffffff 0 1.1px, transparent 1.7px),
+    radial-gradient(circle at 72% 62%, #eaf6ff 0 1.5px, transparent 2.2px),
+    radial-gradient(circle at 42% 84%, #ffffff 0 0.8px, transparent 1.4px);
+  background-size: 173px 211px, 257px 313px, 331px 397px;
+  background-position: 0 0, 90px 70px, 40px 180px;
+  animation: global-snow-far 26s linear infinite;
+  will-change: background-position;
+}
+.island-global-snow::before,
+.island-global-snow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.island-global-snow::before {
+  opacity: 0.78;
+  background-image:
+    radial-gradient(circle at 30% 18%, #ffffff 0 0.8px, transparent 1.4px),
+    radial-gradient(circle at 64% 48%, #ffffff 0 1.2px, transparent 1.9px),
+    radial-gradient(circle at 84% 78%, #dff2ff 0 0.7px, transparent 1.3px);
+  background-size: 119px 157px, 193px 239px, 281px 337px;
+  background-position: 40px 10px, 110px 120px, 20px 220px;
+  animation: global-snow-mid 17s linear infinite;
+}
+.island-global-snow::after {
+  opacity: 0.62;
+  filter: blur(0.35px);
+  background-image:
+    radial-gradient(circle at 22% 34%, #ffffff 0 2.2px, transparent 3.2px),
+    radial-gradient(circle at 78% 24%, #ffffff 0 2.8px, transparent 3.8px),
+    radial-gradient(circle at 48% 72%, #ffffff 0 1.8px, transparent 2.8px);
+  background-size: 223px 283px, 307px 389px, 401px 487px;
+  background-position: 30px 90px, 140px 30px, 70px 260px;
+  animation: global-snow-near 12s linear infinite;
+}
+.forest-view[data-weather="snow"] .island-global-snow { opacity: 0.58; }
+@keyframes global-snow-far {
+  to { background-position: 30px 211px, 60px 383px, 10px 577px; }
+}
+@keyframes global-snow-mid {
+  to { background-position: -20px 167px, 70px 359px, 50px 557px; }
+}
+@keyframes global-snow-near {
+  to { background-position: 60px 373px, 100px 419px, -10px 747px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .island-global-snow,
+  .island-global-snow::before,
+  .island-global-snow::after { animation: none; }
+  .forest-view[data-weather="snow"] .island-global-snow { opacity: 0.3; }
+}
