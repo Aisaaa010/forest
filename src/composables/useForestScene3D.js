@@ -450,7 +450,8 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
       normalAt,
       streamDistance,
       sunDirection: new THREE.Vector3(-5, 9, 6),
-      leafDensity: window.innerWidth < 700 ? 0.55 : 1,
+      leafDensity: window.innerWidth < 700 ? 0.55 : 0.8,
+      variantCount: 4,
     });
     trees.forEach((tree) => island.add(tree));
     island.add(roots, mossPatches);
@@ -710,9 +711,17 @@ void main() {
     });
     island.add(understory.group);
 
-    const cold = buildColdIsland();
-    cold.group.visible = false;
-    scene.add(cold.group);
+    const coldHost = new THREE.Group();
+    coldHost.name = "cold island host";
+    scene.add(coldHost);
+    let cold = null;
+    function ensureColdIsland() {
+      if (cold) return cold;
+      cold = buildColdIsland();
+      cold.group.visible = false;
+      coldHost.add(cold.group);
+      return cold;
+    }
 
     const birds = createBirds(3);
     island.add(birds.group);
@@ -1177,9 +1186,10 @@ void main() {
             ? ALPINE_MOODS.morning
             : ALPINE_MOODS.afternoon;
       island.visible = !coldScene;
-      cold.group.visible = coldScene;
       if (coldScene) {
-        cold.setMode(state.scene, state.phase, coldMood);
+        const activeCold = ensureColdIsland();
+        activeCold.group.visible = true;
+        activeCold.setMode(state.scene, state.phase, coldMood);
         number(sceneUniforms.uIce, "value", polar ? 0.99 : 0.96);
         number(sceneUniforms.uSnow, "value", 1);
         number(nightGlow, "intensity", coldNight ? 0.22 : 0.35);
@@ -1200,6 +1210,7 @@ void main() {
         number(scene, "environmentIntensity", coldMood.environment);
         number(renderer, "toneMappingExposure", coldMood.exposure);
       } else {
+        if (cold) cold.group.visible = false;
         color(ambientLight, "groundColor", 0x423b2d);
       }
       if (lastScene !== state.scene) {
@@ -1318,6 +1329,7 @@ void main() {
       fireflyGather.until = performance.now() + 2600;
     }
     function coldTargets() {
+      if (!cold) return [];
       if (state.scene === "alpine") return [cold.cabin.group];
       if (state.scene === "aurora") return [cold.hut.group, cold.glacier.group, cold.aurora.group];
       return [];
@@ -1787,7 +1799,7 @@ void main() {
           birds.update(timeStep, sceneUniforms.uTime.value);
           moving = true;
         }
-        if (cold.group.visible) {
+        if (cold?.group.visible) {
           cold.update(sceneUniforms.uTime.value);
           moving = true;
         }

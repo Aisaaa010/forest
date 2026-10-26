@@ -155,9 +155,9 @@ export function buildColdIsland() {
 
   const treeSpots = [
     [-3.7, -1.3, 0.9], [-2.9, -2.2, 1.0], [-1.6, -2.55, 0.82], [-0.1, -2.65, 0.95],
-    [1.5, -2.45, 0.78], [2.9, -1.9, 0.92], [3.75, -0.6, 0.85], [3.15, 0.75, 0.92],
-    [2.35, 2.2, 0.78], [-1.0, -1.15, 0.72], [-0.25, -0.15, 0.8], [1.3, -0.9, 0.7],
-    [-3.55, 0.75, 0.88], [-3.35, 2.05, 0.75], [-2.3, -0.1, 0.65], [0.9, 0.85, 0.62],
+    [1.5, -2.45, 0.78], [2.9, -1.9, 0.92], [1.3, -0.9, 0.7],
+    [3.15, 0.75, 0.92], [2.35, 2.2, 0.78], [0.8, 0.35, 0.62],
+    [-3.55, 0.75, 0.88], [-3.35, 2.05, 0.75],
   ];
   const rockSpots = [];
   const forestLife = new THREE.Group();
@@ -179,7 +179,8 @@ export function buildColdIsland() {
     normalAt,
     streamDistance,
     sunDirection: new THREE.Vector3(-4, 7, 6),
-    leafDensity: 0.72,
+    leafDensity: window.innerWidth < 700 ? 0.55 : 0.8,
+    variantCount: 4,
   });
   trees.forEach((tree) => forestLife.add(tree));
   forestLife.add(roots, mossPatches);
@@ -189,7 +190,7 @@ export function buildColdIsland() {
     [pondX, pondZ, 0.95],
   ];
   const grass = buildGrass({
-    count: 1500,
+    count: 900,
     heightAt,
     normalAt,
     streamDistance,
@@ -197,7 +198,7 @@ export function buildColdIsland() {
     avoid,
   });
   forestLife.add(grass);
-  const vines = buildVines(terrain, { fallAngle, clumps: 14 });
+  const vines = buildVines(terrain, { fallAngle, clumps: 10 });
   forestLife.add(vines.group);
   group.add(forestLife);
 
@@ -412,7 +413,6 @@ void main() {
   auroraReflection.renderOrder = 2;
   polarGroup.add(auroraReflection);
   group.add(polarGroup);
-
   const aurora = createAurora();
   group.add(aurora.group);
 

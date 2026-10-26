@@ -6,6 +6,9 @@ import { leafQuaternion, makeLeafGeometry, makeNeedleSprayGeometry } from "./lea
 
 const { smoothstep } = THREE.MathUtils;
 const UP = new THREE.Vector3(0, 1, 0);
+// Shared across forest and cold islands. Geometry is the expensive part of a
+// tree; materials, scale, rotation and palette still vary per instance.
+const TREE_PROTOTYPES = new Map();
 const TAU = Math.PI * 2;
 
 // A tiny deterministic RNG keeps a tree recognisable between reloads and lets a
@@ -532,6 +535,7 @@ export function buildTrees(spots, {
   sunDirection,
   streamDistance,
   leafDensity = 1,
+  variantCount = 6,
 }) {
   const fallbackNormals = () => UP.clone();
   const surfaceNormal = normalAt || fallbackNormals;
@@ -576,6 +580,28 @@ export function buildTrees(spots, {
 
   const trees = [];
   const treeTargets = [];
+  // Reuse a small set of tree skeletons across islands. Geometry generation is
+  // the dominant mount cost; scale, rotation and palette still vary each
+  // instance, so the silhouette does not read as a repeated stamp.
+  const prototypes = TREE_PROTOTYPES;
+
+  function getTreePrototype(isBroadleaf, treeIndex) {
+    const variant = treeIndex % Math.max(1, variantCount);
+    const key = `${isBroadleaf ? "broad" : "conifer"}:${variant}:${leafDensity}`;
+    if (prototypes.has(key)) return prototypes.get(key);
+    const seed = 0x9e3779b9 ^ Math.imul(variant + (isBroadleaf ? 31 : 7), 0x85ebca6b);
+    const built = isBroadleaf
+      ? buildBroadleaf(seed, leafDensity)
+      : buildConifer(seed, leafDensity);
+    const prototype = {
+      barkGeometry: mergeGeometries(built.barkParts, false),
+      crownGeometry: built.crownGeometry,
+      leafMesh: built.leafMesh,
+      leafKind: built.leafKind,
+    };
+    prototypes.set(key, prototype);
+    return prototype;
+  }
 
   spots.forEach(([x, z, scale], treeIndex) => {
     const seed = 0x9e3779b9 ^ Math.imul(treeIndex + 1, 0x85ebca6b);
@@ -594,32 +620,40 @@ export function buildTrees(spots, {
     tree.userData.displayScale = scale * sizeClass;
     tree.userData.species = isBroadleaf ? "broadleaf" : "conifer";
 
-    const built = isBroadleaf
-      ? buildBroadleaf(seed, leafDensity)
-      : buildConifer(seed, leafDensity);
+    const prototype = getTreePrototype(isBroadleaf, treeIndex);
     const barkMaterial = trunkMaterial;
-    const barkGeometry = mergeGeometries(built.barkParts, false);
-    const bark = new THREE.Mesh(barkGeometry, barkMaterial);
+    const bark = new THREE.Mesh(prototype.barkGeometry, barkMaterial);
     bark.castShadow = true;
     bark.receiveShadow = true;
     bark.userData.tree = tree;
     tree.add(bark);
 
-    const crown = new THREE.Mesh(built.crownGeometry, foliage.crowns[paletteIndex]);
+    const crown = new THREE.Mesh(prototype.crownGeometry, foliage.crowns[paletteIndex]);
     crown.castShadow = true;
     crown.receiveShadow = true;
     crown.userData.tree = tree;
     tree.add(crown);
 
-    built.leafMesh.material = foliage.leaves[paletteIndex];
-    built.leafMesh.castShadow = false;
-    built.leafMesh.receiveShadow = true;
-    built.leafMesh.userData.tree = tree;
-    built.leafMesh.name = built.leafKind === "spray" ? "needle sprays" : "leaves";
-    tree.add(built.leafMesh);
+    const leafMesh = new THREE.InstancedMesh(
+      prototype.leafMesh.geometry,
+      foliage.leaves[paletteIndex],
+      prototype.leafMesh.count,
+    );
+    leafMesh.instanceMatrix.copy(prototype.leafMesh.instanceMatrix);
+    leafMesh.instanceMatrix.needsUpdate = true;
+    if (prototype.leafMesh.instanceColor) {
+      leafMesh.instanceColor = prototype.leafMesh.instanceColor.clone();
+      leafMesh.instanceColor.needsUpdate = true;
+    }
+    leafMesh.count = prototype.leafMesh.count;
+    leafMesh.castShadow = false;
+    leafMesh.receiveShadow = true;
+    leafMesh.userData.tree = tree;
+    leafMesh.name = prototype.leafKind === "spray" ? "needle sprays" : "leaves";
+    tree.add(leafMesh);
 
-    tree.userData.crowns = [crown, built.leafMesh];
-    treeTargets.push(bark, crown, built.leafMesh);
+    tree.userData.crowns = [crown, leafMesh];
+    treeTargets.push(bark, crown, leafMesh);
 
     // Surface roots radiate downhill and meet the terrain at their far end, which
     // keeps trunks visually planted on a slope instead of hovering over it.
