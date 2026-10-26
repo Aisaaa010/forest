@@ -69,6 +69,17 @@ function cylinder(radiusTop, radiusBottom, height, material, x = 0, y = 0, z = 0
   return mesh;
 }
 
+// Rounded log ends read much softer than flat cylinders at this scale.
+function logCapsule(radius, length, material, x = 0, y = 0, z = 0, axis = "x") {
+  const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius, length, 4, 10), material);
+  mesh.position.set(x, y, z);
+  if (axis === "x") mesh.rotation.z = Math.PI / 2;
+  else if (axis === "z") mesh.rotation.x = Math.PI / 2;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 // A soft additive pool of warm light on the snow around a doorway.
 function makeWarmPool(width = 2.6, depth = 1.9, color = 0xffa452, opacity = 0.34) {
   const material = new THREE.ShaderMaterial({
@@ -138,16 +149,12 @@ export function createAlpineCabin() {
   // Exposed log courses on the front and back.
   for (const z of [-0.29, 0.29]) {
     for (let i = 0; i < 4; i++) {
-      const log = cylinder(0.026, 0.026, 0.78, woodLight, 0, 0.14 + i * 0.09, z, 7);
-      log.rotation.z = Math.PI / 2;
-      group.add(log);
+      group.add(logCapsule(0.027, 0.72, woodLight, 0, 0.14 + i * 0.09, z, "x"));
     }
   }
   for (const x of [-0.39, 0.39]) {
     for (let i = 0; i < 3; i++) {
-      const log = cylinder(0.024, 0.024, 0.58, woodLight, x, 0.17 + i * 0.1, 0, 7);
-      log.rotation.x = Math.PI / 2;
-      group.add(log);
+      group.add(logCapsule(0.025, 0.52, woodLight, x, 0.17 + i * 0.1, 0, "z"));
     }
   }
   // Gable roof and snow layer.
@@ -187,9 +194,15 @@ export function createAlpineCabin() {
   }
   // Stacked firewood and a snow shovel beside the porch.
   for (let i = 0; i < 7; i++) {
-    const log = cylinder(0.018, 0.02, 0.22, i % 2 ? woodLight : wood, -0.52, 0.07 + Math.floor(i / 3) * 0.04, 0.12 + (i % 3) * 0.045, 6);
-    log.rotation.z = Math.PI / 2;
-    group.add(log);
+    group.add(logCapsule(
+      0.021,
+      0.2,
+      i % 2 ? woodLight : wood,
+      -0.52,
+      0.07 + Math.floor(i / 3) * 0.04,
+      0.12 + (i % 3) * 0.045,
+      "x",
+    ));
   }
   const shovel = cylinder(0.007, 0.009, 0.36, woodLight, 0.52, 0.24, 0.3, 5);
   shovel.rotation.z = 0.22;
@@ -240,6 +253,152 @@ export function createAlpineCabin() {
     group.add(bulb);
   }
   return { group, windowMaterial, light, groundLight, smoke, pool, halo };
+}
+
+// A smaller sauna-like cabin on the right side of the alpine clearing.
+export function createSmallCabin() {
+  const group = new THREE.Group();
+  group.name = "small alpine cabin";
+  const wood = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x5c4432, roughness: 0.94 }), {
+    detail: { scale: 16, normalStrength: 0.1, stretch: [1, 2.2, 1] },
+  });
+  const woodLight = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x78573e, roughness: 0.9 }), {
+    detail: { scale: 20, normalStrength: 0.08, stretch: [1, 2.4, 1] },
+  });
+  const stone = new THREE.MeshStandardMaterial({ color: 0x706d60, roughness: 0.96, flatShading: true });
+  const snow = new THREE.MeshStandardMaterial({ color: 0xe9f0ef, roughness: 0.72 });
+  const roofDark = new THREE.MeshStandardMaterial({ color: 0x4a392d, roughness: 0.95 });
+  const windowMaterial = new THREE.MeshBasicMaterial({ color: 0xffc477 });
+  const door = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x3d2d23, roughness: 0.92 }), {
+    detail: { scale: 18, normalStrength: 0.08, stretch: [1, 2.4, 1] },
+  });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x4e5558, roughness: 0.45, metalness: 0.35 });
+
+  group.add(box(0.68, 0.06, 0.52, stone, 0, 0.03, 0));
+  group.add(box(0.56, 0.32, 0.42, wood, 0, 0.22, 0));
+  for (const z of [-0.23, 0.23]) {
+    for (let i = 0; i < 3; i++) {
+      group.add(logCapsule(0.021, 0.5, woodLight, 0, 0.1 + i * 0.08, z, "x"));
+    }
+  }
+  for (const x of [-0.3, 0.3]) {
+    for (let i = 0; i < 2; i++) {
+      group.add(logCapsule(0.019, 0.36, woodLight, x, 0.13 + i * 0.1, 0, "z"));
+    }
+  }
+  for (const side of [-1, 1]) {
+    const slab = box(0.68, 0.04, 0.3, roofDark, 0, 0.43, side * 0.12);
+    slab.rotation.x = side * 0.55;
+    group.add(slab);
+    const snowSlab = box(0.7, 0.045, 0.29, snow, 0, 0.47, side * 0.12);
+    snowSlab.rotation.x = side * 0.55;
+    group.add(snowSlab);
+  }
+  group.add(box(0.54, 0.12, 0.05, woodLight, 0, 0.36, 0.21));
+  group.add(box(0.08, 0.3, 0.08, stone, 0.17, 0.56, -0.1));
+  group.add(box(0.11, 0.04, 0.11, metal, 0.17, 0.72, -0.1));
+  // Warm sauna window and a timber door.
+  group.add(box(0.11, 0.1, 0.018, windowMaterial, 0.12, 0.27, 0.26));
+  group.add(box(0.14, 0.13, 0.022, woodLight, 0.12, 0.27, 0.252));
+  group.add(box(0.13, 0.09, 0.02, windowMaterial, 0.12, 0.27, 0.266));
+  group.add(box(0.01, 0.09, 0.008, wood, 0.12, 0.27, 0.27));
+  group.add(box(0.1, 0.18, 0.02, door, -0.14, 0.18, 0.258));
+  group.add(box(0.012, 0.2, 0.025, woodLight, -0.2, 0.19, 0.266));
+  group.add(box(0.012, 0.2, 0.025, woodLight, -0.08, 0.19, 0.266));
+  group.add(box(0.12, 0.015, 0.028, woodLight, -0.14, 0.29, 0.266));
+  const smoke = makeSmoke(sceneUniforms.uTime, 0.7);
+  smoke.position.set(0.17, 0.74, -0.1);
+  group.add(smoke);
+  const light = new THREE.PointLight(0xffb45e, 0.8, 2.5, 2);
+  light.position.set(0.12, 0.3, 0.3);
+  group.add(light);
+  const pool = makeWarmPool(1.5, 1.1, 0xffa452, 0.22);
+  group.add(pool);
+  const halo = makeWindowHalo(0.2, 0.16, 0.274);
+  halo.position.y = 0.27;
+  group.add(halo);
+  const ice = new THREE.MeshPhysicalMaterial({ color: 0xcfeaf2, roughness: 0.2, transparent: true, opacity: 0.8 });
+  for (let i = 0; i < 4; i++) {
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.01, 0.06 + (i % 2) * 0.025, 5).rotateX(Math.PI), ice);
+    spike.position.set(-0.25 + i * 0.16, 0.38, 0.22);
+    group.add(spike);
+  }
+  return { group, windowMaterial, light, smoke, pool, halo };
+}
+
+const CAMPFIRE_FLAME = `uniform float uTime;
+uniform float uIntensity;
+varying vec2 vUv;
+void main() {
+  float y = vUv.y;
+  float sway = sin(uTime * 3.4 + y * 7.0) * 0.035;
+  float halfWidth = 0.10 + (1.0 - y) * 0.27;
+  float body = 1.0 - smoothstep(0.0, halfWidth, abs(vUv.x - 0.5 - sway));
+  float finger = 1.0 - smoothstep(0.0, 0.055, abs(vUv.x - 0.34 + sin(uTime * 4.2) * 0.02));
+  finger *= smoothstep(0.35, 1.0, y) * 0.45;
+  float flicker = 0.72 + 0.28 * sin(uTime * 11.0 + y * 14.0);
+  float alpha = max(body, finger) * (1.0 - smoothstep(0.55, 1.0, y)) * flicker * uIntensity;
+  vec3 color = mix(vec3(1.0, 0.34, 0.08), vec3(1.0, 0.88, 0.42), smoothstep(0.1, 0.8, y));
+  gl_FragColor = vec4(color, alpha * 0.9);
+}`;
+
+// Low-poly campfire with rounded logs, a stone ring, animated flame cards and
+// a flickering warm light.
+export function createCampfire() {
+  const group = new THREE.Group();
+  group.name = "campfire";
+  const stone = new THREE.MeshStandardMaterial({ color: 0x68655b, roughness: 0.96, flatShading: true });
+  const wood = new THREE.MeshStandardMaterial({ color: 0x4c3527, roughness: 0.95 });
+  for (let i = 0; i < 10; i++) {
+    const angle = (i / 10) * TAU;
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.055 + (i % 3) * 0.012, 0), stone);
+    rock.position.set(Math.cos(angle) * 0.34, 0.035, Math.sin(angle) * 0.34);
+    rock.rotation.set(i, i * 1.7, i * 0.4);
+    rock.scale.y = 0.7;
+    rock.castShadow = true;
+    rock.receiveShadow = true;
+    group.add(rock);
+  }
+  for (let i = 0; i < 3; i++) {
+    const log = logCapsule(0.035, 0.42, wood, 0, 0.075, 0, i % 2 ? "x" : "z");
+    log.rotation.y = i * 0.95;
+    log.position.y = 0.075 + i * 0.012;
+    group.add(log);
+  }
+  const uniforms = { uTime: sceneUniforms.uTime, uIntensity: { value: 1 } };
+  const flameMaterial = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `varying vec2 vUv;
+void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: CAMPFIRE_FLAME,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  for (let i = 0; i < 3; i++) {
+    const flame = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.62), flameMaterial);
+    flame.position.y = 0.3;
+    flame.rotation.y = (i / 3) * Math.PI;
+    group.add(flame);
+  }
+  const light = new THREE.PointLight(0xff7b2f, 2.1, 3.6, 2);
+  light.position.set(0, 0.3, 0);
+  group.add(light);
+  const smoke = makeSmoke(sceneUniforms.uTime, 0.8);
+  smoke.position.y = 0.18;
+  group.add(smoke);
+  let boostUntil = 0;
+  function pulse() {
+    boostUntil = performance.now() + 900;
+  }
+  function update(time) {
+    const boost = Math.max(0, (boostUntil - performance.now()) / 900);
+    const flicker = 1 + Math.sin(time * 8.3) * 0.12 + Math.sin(time * 19.7 + 1.3) * 0.05;
+    light.intensity = (2.0 + boost * 2.4) * flicker;
+    uniforms.uIntensity.value = 1 + boost * 0.8;
+  }
+  return { group, light, smoke, pulse, update };
 }
 
 // A small elevated polar research hut with an antenna, fuel drums and a large

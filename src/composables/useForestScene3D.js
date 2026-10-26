@@ -450,8 +450,8 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
       normalAt,
       streamDistance,
       sunDirection: new THREE.Vector3(-5, 9, 6),
-      leafDensity: window.innerWidth < 700 ? 0.55 : 0.8,
-      variantCount: 4,
+      leafDensity: 1,
+      variantCount: 12,
     });
     trees.forEach((tree) => island.add(tree));
     island.add(roots, mossPatches);
@@ -1330,7 +1330,7 @@ void main() {
     }
     function coldTargets() {
       if (!cold) return [];
-      if (state.scene === "alpine") return [cold.cabin.group];
+      if (state.scene === "alpine") return [cold.cabin.group, cold.smallCabin.group, cold.campfire.group];
       if (state.scene === "aurora") return [cold.hut.group, cold.glacier.group, cold.aurora.group];
       return [];
     }
@@ -1342,7 +1342,7 @@ void main() {
         if (coldHit) {
           focusOnDetail(coldHit.point, 0.4);
           const action = cold.interact(coldHit);
-          const tint = action === "aurora" ? 0x72ffd2 : action === "glacier" ? 0xbdefff : 0xffd39a;
+          const tint = action === "aurora" ? 0x72ffd2 : action === "glacier" ? 0xbdefff : action === "fire" ? 0xffb066 : 0xffd39a;
           burstAt(coldHit.point, true, tint);
           dirty = true;
           return;

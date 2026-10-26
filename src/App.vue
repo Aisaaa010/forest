@@ -97,7 +97,7 @@ const conditionText = computed(
   () => scene.value.conditions?.[state.phase] || `${phaseNames[state.phase]} · ${weatherNames[state.weather]}`,
 );
 const interactionHint = computed(() => {
-  if (state.scene === "alpine") return "点木屋近看细节；轻触窗、烟囱或灯串";
+  if (state.scene === "alpine") return "点木屋近看细节；轻触窗、烟囱、火堆或灯串";
   if (state.scene === "aurora") return "点冰墙或科考屋近看；轻触极光触发回应";
   return "点花、树、溪流或雪人近看细节；轻触发现回应";
 });

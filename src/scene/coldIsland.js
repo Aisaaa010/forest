@@ -5,7 +5,7 @@ import { buildVines } from "./vines.js";
 import { createIslandTerrain, makeBoulderGeometry, rimPoint } from "./terrain.js";
 import { enhanceMaterial, sceneUniforms } from "./materials.js";
 import { makeWaterRibbon } from "./water.js";
-import { createAlpineCabin, createPolarHut } from "./cabin.js";
+import { createAlpineCabin, createSmallCabin, createCampfire, createPolarHut } from "./cabin.js";
 import { createAurora } from "./aurora.js";
 import { createGlacierWall } from "./glacier.js";
 
@@ -155,9 +155,9 @@ export function buildColdIsland() {
 
   const treeSpots = [
     [-3.7, -1.3, 0.9], [-2.9, -2.2, 1.0], [-1.6, -2.55, 0.82], [-0.1, -2.65, 0.95],
-    [1.5, -2.45, 0.78], [2.9, -1.9, 0.92], [1.3, -0.9, 0.7],
-    [3.15, 0.75, 0.92], [2.35, 2.2, 0.78], [0.8, 0.35, 0.62],
-    [-3.55, 0.75, 0.88], [-3.35, 2.05, 0.75],
+    [1.5, -2.45, 0.78], [2.9, -1.9, 0.92], [3.75, -0.6, 0.82], [3.9, -1.4, 0.76],
+    [-1.0, -1.15, 0.72], [-0.25, -0.15, 0.8], [1.3, -0.9, 0.7], [0.9, -1.6, 0.68],
+    [-3.55, 0.75, 0.88], [-3.35, 2.05, 0.75], [-2.3, -0.1, 0.65], [0.85, 0.7, 0.62],
   ];
   const rockSpots = [];
   const forestLife = new THREE.Group();
@@ -179,18 +179,24 @@ export function buildColdIsland() {
     normalAt,
     streamDistance,
     sunDirection: new THREE.Vector3(-4, 7, 6),
-    leafDensity: window.innerWidth < 700 ? 0.55 : 0.8,
-    variantCount: 4,
+    leafDensity: 1,
+    variantCount: 12,
   });
   trees.forEach((tree) => forestLife.add(tree));
   forestLife.add(roots, mossPatches);
+  const smallCabinX = 2.7;
+  const smallCabinZ = 0.85;
+  const fireX = 1.9;
+  const fireZ = 2.65;
   const avoid = [
     ...treeSpots.map(([x, z, s]) => [x, z, 0.09 * s]),
     [-2.3, 1.3, 0.65],
     [pondX, pondZ, 0.95],
+    [smallCabinX, smallCabinZ, 0.62],
+    [fireX, fireZ, 0.52],
   ];
   const grass = buildGrass({
-    count: 900,
+    count: 1500,
     heightAt,
     normalAt,
     streamDistance,
@@ -198,7 +204,7 @@ export function buildColdIsland() {
     avoid,
   });
   forestLife.add(grass);
-  const vines = buildVines(terrain, { fallAngle, clumps: 10 });
+  const vines = buildVines(terrain, { fallAngle, clumps: 14 });
   forestLife.add(vines.group);
   group.add(forestLife);
 
@@ -254,6 +260,19 @@ export function buildColdIsland() {
   cabin.group.rotation.y = 0.22;
   cabin.group.scale.setScalar(1.28);
   alpineGroup.add(cabin.group);
+
+  const smallCabin = createSmallCabin();
+  smallCabin.group.position.set(smallCabinX, heightAt(smallCabinX, smallCabinZ), smallCabinZ);
+  smallCabin.group.rotation.y = -0.52;
+  smallCabin.group.scale.setScalar(0.92);
+  alpineGroup.add(smallCabin.group);
+
+  const campfire = createCampfire();
+  campfire.group.position.set(fireX, heightAt(fireX, fireZ) + 0.01, fireZ);
+  campfire.group.rotation.y = 0.24;
+  campfire.group.scale.setScalar(0.95);
+  alpineGroup.add(campfire.group);
+
   // Fence around the clearing.
   const fenceWood = new THREE.MeshStandardMaterial({ color: 0x5f4836, roughness: 0.95 });
   for (let i = 0; i < 7; i++) {
@@ -417,10 +436,13 @@ void main() {
   group.add(aurora.group);
 
   cabin.group.userData.coldAction = "cabin";
+  smallCabin.group.userData.coldAction = "smallCabin";
+  campfire.group.userData.coldAction = "fire";
   hut.group.userData.coldAction = "hut";
   glacier.group.userData.coldAction = "glacier";
   aurora.group.userData.coldAction = "aurora";
   let cabinPulseUntil = 0;
+  let smallCabinPulseUntil = 0;
   let hutPulseUntil = 0;
   let glacierPulseUntil = 0;
   let cabinBase = { light: 0, ground: 0, pool: 0, halo: 0 };
@@ -481,6 +503,8 @@ void main() {
     if (!action) return null;
     const now = sceneUniforms.uTime.value;
     if (action === "cabin") cabinPulseUntil = now + 1.3;
+    else if (action === "smallCabin") smallCabinPulseUntil = now + 1.0;
+    else if (action === "fire") campfire.pulse();
     else if (action === "hut") hutPulseUntil = now + 1.3;
     else if (action === "glacier") glacierPulseUntil = now + 1.0;
     else if (action === "aurora") aurora.pulse();
@@ -498,6 +522,12 @@ void main() {
       cabin.pool.material.uniforms.uOpacity.value = cabinBase.pool + e * 0.18;
       cabin.halo.material.opacity = cabinBase.halo + e * 0.1;
     }
+    if (alpineGroup.visible) {
+      campfire.update(time);
+      const sp = Math.max(0, (smallCabinPulseUntil - time) / 1.0);
+      smallCabin.light.intensity = 0.8 + sp * sp * 1.0;
+      smallCabin.halo.material.opacity = 0.2 + sp * sp * 0.12;
+    }
     if (polarGroup.visible) {
       const hp = Math.max(0, (hutPulseUntil - time) / 1.3);
       const he = hp * hp;
@@ -510,5 +540,5 @@ void main() {
     }
   }
 
-  return { group, setMode, update, interact, actionFor, cabin, hut, aurora, glacier, treeSpots, terrain };
+  return { group, setMode, update, interact, actionFor, cabin, smallCabin, campfire, hut, aurora, glacier, treeSpots, terrain };
 }
