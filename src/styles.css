@@ -1914,3 +1914,16 @@ dialog p {
     radial-gradient(ellipse at 50% 60%, #4de8bb1f 0, transparent 64%);
   animation: island-mist 26s ease-in-out infinite alternate;
 }
+/* Cinematic edge falloff for the cold scenes; keeps the centre luminous. */
+.forest-view::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 44%, transparent 44%, #06121e5c 100%);
+  transition: opacity 900ms ease;
+}
+.forest-view[data-scene="alpine"]::after,
+.forest-view[data-scene="aurora"]::after { opacity: 0.8; }

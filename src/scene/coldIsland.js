@@ -79,6 +79,18 @@ export function buildColdIsland() {
   meadow.name = "cold meadow";
   meadow.receiveShadow = true;
   group.add(meadow);
+  // A continuous snow blanket over the meadow. The underlying terrain still
+  // provides the slope and silhouette, but winter should read white rather than
+  // a green lawn with a few snow patches.
+  const snowGroundMaterial = enhanceMaterial(
+    new THREE.MeshStandardMaterial({ color: 0xe1ebf3, roughness: 0.84 }),
+    { detail: { scale: 18, normalStrength: 0.035 } },
+  );
+  const snowCover = new THREE.Mesh(meadow.geometry, snowGroundMaterial);
+  snowCover.name = "cold snow cover";
+  snowCover.position.y = 0.003;
+  snowCover.receiveShadow = true;
+  group.add(snowCover);
   const cliff = new THREE.Mesh(terrain.makeCliffGeometry(), cliffMaterial);
   cliff.name = "cold cliff";
   cliff.castShadow = true;
@@ -115,28 +127,141 @@ export function buildColdIsland() {
   const pondX = 0.2;
   const pondZ = 2.05;
   const pondY = heightAt(pondX, pondZ) + 0.012;
-  const pond = new THREE.Mesh(new THREE.CircleGeometry(0.78, 32).rotateX(-Math.PI / 2), pondMaterial);
+  // An irregular frozen lake with bays and a soft snow shore. The old perfect
+  // circle was the strongest artificial cue in the scene.
+  const lakeSegments = 52;
+  const lakeOutline = (angle) =>
+    0.76 +
+    Math.sin(angle * 3.0 + 0.7) * 0.16 +
+    Math.sin(angle * 5.0 - 1.2) * 0.07 +
+    Math.cos(angle * 7.0 + 0.4) * 0.04;
+  const lakePositions = [0, 0, 0];
+  const lakeUvs = [0.5, 0.5];
+  const lakeIndices = [];
+  const lakePoints = [];
+  for (let i = 0; i < lakeSegments; i++) {
+    const angle = (i / lakeSegments) * TAU;
+    const r = lakeOutline(angle);
+    const x = Math.cos(angle) * r;
+    const z = Math.sin(angle) * r;
+    lakePoints.push([x, z, r, angle]);
+    lakePositions.push(x, 0, z);
+    lakeUvs.push((x / 2.2) + 0.5, (z / 2.0) + 0.5);
+  }
+  for (let i = 0; i < lakeSegments; i++) {
+    lakeIndices.push(0, 1 + i, 1 + ((i + 1) % lakeSegments));
+  }
+  const lakeGeometry = new THREE.BufferGeometry();
+  lakeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(lakePositions, 3));
+  lakeGeometry.setAttribute("uv", new THREE.Float32BufferAttribute(lakeUvs, 2));
+  lakeGeometry.setIndex(lakeIndices);
+  lakeGeometry.computeVertexNormals();
+  const pond = new THREE.Mesh(lakeGeometry, pondMaterial);
   pond.position.set(pondX, pondY, pondZ);
   pond.renderOrder = 1;
   group.add(pond);
-  const pondBank = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.88, 32).rotateX(-Math.PI / 2), snowMaterial);
+
+  // Irregular shore ribbon rather than a perfect white ring.
+  const shorePositions = [];
+  const shoreIndices = [];
+  for (let i = 0; i < lakeSegments; i++) {
+    const [, , , angle] = lakePoints[i];
+    const r = lakeOutline(angle);
+    const rOuter = r + 0.1 + (i % 4) * 0.012;
+    shorePositions.push(
+      Math.cos(angle) * r, 0.004, Math.sin(angle) * r,
+      Math.cos(angle) * rOuter, 0.004, Math.sin(angle) * rOuter,
+    );
+  }
+  for (let i = 0; i < lakeSegments; i++) {
+    const a = i * 2;
+    const b = ((i + 1) % lakeSegments) * 2;
+    shoreIndices.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  const shoreGeometry = new THREE.BufferGeometry();
+  shoreGeometry.setAttribute("position", new THREE.Float32BufferAttribute(shorePositions, 3));
+  shoreGeometry.setIndex(shoreIndices);
+  shoreGeometry.computeVertexNormals();
+  const pondBank = new THREE.Mesh(shoreGeometry, snowMaterial);
   pondBank.position.set(pondX, pondY + 0.002, pondZ);
   group.add(pondBank);
-  // Fine dark cracks keep the pond from reading as a white plate.
+
+  // Chords and branching cracks inside the frozen surface.
   const crackPositions = [];
-  for (let i = 0; i < 11; i++) {
+  for (let i = 0; i < 13; i++) {
     const angle = i * 1.37;
-    const inner = 0.03 + (i % 3) * 0.06;
-    const outer = 0.34 + (i % 4) * 0.1;
+    const inner = 0.03 + (i % 3) * 0.05;
+    const outer = 0.2 + (i % 5) * 0.09;
+    const endAngle = angle + 0.18 + (i % 3) * 0.12;
     crackPositions.push(
-      pondX + Math.cos(angle) * inner, pondY + 0.004, pondZ + Math.sin(angle) * inner,
-      pondX + Math.cos(angle) * outer, pondY + 0.004, pondZ + Math.sin(angle) * outer,
+      pondX + Math.cos(angle) * inner, pondY + 0.006, pondZ + Math.sin(angle) * inner,
+      pondX + Math.cos(endAngle) * outer, pondY + 0.006, pondZ + Math.sin(endAngle) * outer,
     );
   }
   const crackGeometry = new THREE.BufferGeometry();
   crackGeometry.setAttribute("position", new THREE.Float32BufferAttribute(crackPositions, 3));
-  const cracks = new THREE.LineSegments(crackGeometry, new THREE.LineBasicMaterial({ color: 0x416f7c, transparent: true, opacity: 0.55 }));
+  const cracks = new THREE.LineSegments(crackGeometry, new THREE.LineBasicMaterial({ color: 0x416f7c, transparent: true, opacity: 0.5 }));
   group.add(cracks);
+
+  // Low pressure ridges and a few frozen reeds soften the lake edge.
+  const iceRidgeMaterial = new THREE.MeshStandardMaterial({ color: 0xd2e8ef, roughness: 0.32, flatShading: true });
+  for (let i = 0; i < 4; i++) {
+    const angle = 0.4 + i * 1.35;
+    const r = lakeOutline(angle) * 1.02;
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.18 + (i % 2) * 0.1, 0.018, 0.035), iceRidgeMaterial);
+    ridge.position.set(pondX + Math.cos(angle) * r, pondY + 0.012, pondZ + Math.sin(angle) * r);
+    ridge.rotation.y = -angle + 0.4;
+    group.add(ridge);
+  }
+  const reedMaterial = new THREE.MeshStandardMaterial({ color: 0x886f4c, roughness: 0.95 });
+  for (let i = 0; i < 11; i++) {
+    const angle = 0.35 + i * 0.47;
+    const r = lakeOutline(angle) + 0.08 + (i % 3) * 0.03;
+    const x = pondX + Math.cos(angle) * r;
+    const z = pondZ + Math.sin(angle) * r;
+    const reed = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.01, 0.22 + (i % 4) * 0.07, 4), reedMaterial);
+    reed.position.set(x, heightAt(x, z) + 0.07, z);
+    reed.rotation.z = (i % 2 ? 1 : -1) * (0.1 + (i % 3) * 0.05);
+    group.add(reed);
+  }
+
+  // A soft cloud sea below the island gives the floating landscape a sense of
+  // altitude and hides the hard cut of the cliff base.
+  const cloudSeaMaterial = new THREE.ShaderMaterial({
+    uniforms: { uTime: sceneUniforms.uTime, uColor: { value: new THREE.Color(0xbfd5e3) } },
+    vertexShader: `varying vec2 vUv;
+void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `uniform float uTime;
+uniform vec3 uColor;
+varying vec2 vUv;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void main() {
+  vec2 p = vUv * vec2(4.5, 3.0) + vec2(uTime * 0.006, uTime * 0.003);
+  float cloud = noise(p) * 0.6 + noise(p * 2.1 + 7.0) * 0.3;
+  float fade = smoothstep(0.0, 0.16, vUv.x) * smoothstep(1.0, 0.84, vUv.x) * smoothstep(0.0, 0.2, vUv.y) * smoothstep(1.0, 0.8, vUv.y);
+  gl_FragColor = vec4(uColor, smoothstep(0.24, 0.66, cloud) * fade * 0.32);
+}`,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const cloudSea = new THREE.Group();
+  cloudSea.name = "cloud sea";
+  for (let i = 0; i < 3; i++) {
+    const cloud = new THREE.Mesh(
+      new THREE.PlaneGeometry(17 + i * 3, 12 + i * 2).rotateX(-Math.PI / 2),
+      cloudSeaMaterial,
+    );
+    cloud.position.set((i - 1) * 1.1, -1.25 - i * 0.4, -0.4 + i * 0.3);
+    cloud.rotation.y = i * 0.3;
+    cloud.renderOrder = -2;
+    cloudSea.add(cloud);
+  }
+  group.add(cloudSea);
 
   // Rocks and a modest ridge give the cold island a different silhouette.
   const ridgeGroup = new THREE.Group();
@@ -194,6 +319,8 @@ export function buildColdIsland() {
     [pondX, pondZ, 0.95],
     [smallCabinX, smallCabinZ, 0.78],
     [fireX, fireZ, 0.58],
+    [3.3, 2.2, 0.3],
+    [-3.0, 2.35, 0.26],
   ];
   const grass = buildGrass({
     count: 1500,
@@ -204,6 +331,10 @@ export function buildColdIsland() {
     avoid,
   });
   forestLife.add(grass);
+  // Winter grass: muted straw poking through the snow rather than a green lawn.
+  grass.material.vertexColors = false;
+  grass.material.color.setHex(0xb7bcae);
+  grass.material.needsUpdate = true;
   const vines = buildVines(terrain, { fallAngle, clumps: 14 });
   forestLife.add(vines.group);
   group.add(forestLife);
@@ -272,6 +403,31 @@ export function buildColdIsland() {
   campfire.group.rotation.y = 0.24;
   campfire.group.scale.setScalar(1.0);
   alpineGroup.add(campfire.group);
+
+  // A fallen, snow-covered log and an old stump break the tidy clearing.
+  const fallenWood = new THREE.MeshStandardMaterial({ color: 0x6a4d38, roughness: 0.95, flatShading: true });
+  const fallenLog = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.9, 5, 10), fallenWood);
+  fallenLog.position.set(3.3, heightAt(3.3, 2.2) + 0.1, 2.2);
+  fallenLog.rotation.set(0, 0.2, Math.PI / 2);
+  fallenLog.castShadow = true;
+  fallenLog.receiveShadow = true;
+  alpineGroup.add(fallenLog);
+  const logSnow = new THREE.Mesh(new THREE.SphereGeometry(0.17, 9, 6), snowMaterial);
+  logSnow.position.set(3.3, heightAt(3.3, 2.2) + 0.21, 2.2);
+  logSnow.scale.set(1.8, 0.16, 0.7);
+  alpineGroup.add(logSnow);
+  const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 0.32, 10), fallenWood);
+  stump.position.set(-3.0, heightAt(-3.0, 2.35) + 0.16, 2.35);
+  stump.rotation.z = 0.06;
+  stump.castShadow = true;
+  alpineGroup.add(stump);
+  const cutFace = new THREE.Mesh(new THREE.CylinderGeometry(0.088, 0.088, 0.014, 10), new THREE.MeshStandardMaterial({ color: 0x9a7650, roughness: 0.9 }));
+  cutFace.position.set(-3.0, heightAt(-3.0, 2.35) + 0.325, 2.35);
+  alpineGroup.add(cutFace);
+  const stumpSnow = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 5), snowMaterial);
+  stumpSnow.position.set(-3.0, heightAt(-3.0, 2.35) + 0.36, 2.35);
+  stumpSnow.scale.set(0.9, 0.25, 0.7);
+  alpineGroup.add(stumpSnow);
 
   // Fence around the clearing.
   const fenceWood = new THREE.MeshStandardMaterial({ color: 0x5f4836, roughness: 0.95 });
@@ -427,7 +583,7 @@ void main() {
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
   });
-  const auroraReflection = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.25).rotateX(-Math.PI / 2), reflectionMaterial);
+  const auroraReflection = new THREE.Mesh(lakeGeometry.clone(), reflectionMaterial);
   auroraReflection.position.set(pondX, pondY + 0.006, pondZ);
   auroraReflection.renderOrder = 2;
   polarGroup.add(auroraReflection);
@@ -458,6 +614,8 @@ void main() {
     aurora.group.visible = polar;
     ridgeGroup.visible = alpine;
     glacier.group.visible = polar;
+    cloudSea.visible = alpine;
+    snowCover.material.color.setHex(alpine ? 0xe1ebf3 : 0xc2d4e1);
     if (alpine && mood) {
       cabin.windowMaterial.color.setHex(mood.window.color).multiplyScalar(mood.window.factor ?? 1);
       cabin.light.intensity = mood.window.intensity;
@@ -540,5 +698,5 @@ void main() {
     }
   }
 
-  return { group, setMode, update, interact, actionFor, cabin, smallCabin, campfire, hut, aurora, glacier, treeSpots, terrain };
+  return { group, setMode, update, interact, actionFor, cabin, smallCabin, campfire, hut, aurora, glacier, snowCover, cloudSea, treeSpots, terrain };
 }

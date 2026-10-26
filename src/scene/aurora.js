@@ -134,7 +134,7 @@ export function createAurora() {
   halo.position.copy(moon.position);
   halo.lookAt(0, 2, 0);
   group.add(halo);
-  const auroraLight = new THREE.PointLight(0x5de0c0, 1.4, 18);
+  const auroraLight = new THREE.PointLight(0x5de0c0, 0.9, 18);
   auroraLight.position.set(0, 4.0, 0);
   group.add(auroraLight);
   for (const layer of layers) layer.userData.baseOpacity = layer.material.uniforms.uOpacity.value;
@@ -152,7 +152,7 @@ export function createAurora() {
       layer.material.uniforms.uOpacity.value = layer.userData.baseOpacity * (1 + eased * 0.75);
     }
     stars.material.uniforms.uTime.value = time;
-    auroraLight.intensity = 1.4 + eased * 2.6;
+    auroraLight.intensity = 0.9 + eased * 1.8;
     group.rotation.y = Math.sin(time * 0.01) * 0.06;
   }
 
