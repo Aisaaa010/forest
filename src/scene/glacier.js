@@ -35,7 +35,7 @@ function wallHeight(t) {
  * Continuous glacier wall with a vertical faceted face, baked crevasse
  * columns, a bright snow cornice and a handful of broken ice masses.
  */
-export function createGlacierWall({ heightAt, snowMaterial }) {
+export function createGlacierWall({ heightAt }) {
   const group = new THREE.Group();
   group.name = "glacier wall";
   const columns = 32;
@@ -243,6 +243,39 @@ export function createGlacierWall({ heightAt, snowMaterial }) {
     emissive: 0x1c617c,
     emissiveIntensity: 0.3,
   });
+
+  // A dark ice cave gives the wall a readable negative space and focal point.
+  const caveMaterial = new THREE.MeshStandardMaterial({
+    color: 0x061c2a,
+    roughness: 0.42,
+    metalness: 0.02,
+    flatShading: true,
+    side: THREE.DoubleSide,
+  });
+  const caveX = -0.72;
+  const caveBase = heightAt(caveX, baseZ) + 0.05;
+  const cave = new THREE.Mesh(new THREE.CircleGeometry(0.43, 18, 0, Math.PI), caveMaterial);
+  cave.position.set(caveX, caveBase + 0.4, baseZ + 0.38);
+  cave.scale.set(1.35, 0.85, 1);
+  group.add(cave);
+  const caveRim = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.045, 6, 18, Math.PI), seracMaterial);
+  caveRim.position.copy(cave.position);
+  caveRim.scale.set(1.35, 0.85, 1);
+  group.add(caveRim);
+
+  const meltMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0x16485d,
+    roughness: 0.12,
+    metalness: 0.08,
+    clearcoat: 0.8,
+    transparent: true,
+    opacity: 0.8,
+  });
+  const melt = new THREE.Mesh(new THREE.CircleGeometry(0.34, 18).rotateX(-Math.PI / 2), meltMaterial);
+  melt.position.set(caveX, heightAt(caveX, -2.82) + 0.015, -2.82);
+  melt.scale.set(1.4, 1, 0.7);
+  group.add(melt);
+
   // Three broken ice masses at the wall foot, half buried in snow. The large
   // towers were removed because a row of columns read as a fence, not a glacier.
   const blocks = [

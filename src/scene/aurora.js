@@ -137,12 +137,24 @@ export function createAurora() {
   const auroraLight = new THREE.PointLight(0x5de0c0, 1.4, 18);
   auroraLight.position.set(0, 4.0, 0);
   group.add(auroraLight);
+  for (const layer of layers) layer.userData.baseOpacity = layer.material.uniforms.uOpacity.value;
+  let pulseUntil = 0;
+
+  function pulse() {
+    pulseUntil = performance.now() + 1300;
+  }
 
   function update(time) {
-    for (const layer of layers) layer.material.uniforms.uTime.value = time;
+    const pulse = Math.max(0, (pulseUntil - performance.now()) / 1300);
+    const eased = pulse * pulse;
+    for (const layer of layers) {
+      layer.material.uniforms.uTime.value = time;
+      layer.material.uniforms.uOpacity.value = layer.userData.baseOpacity * (1 + eased * 0.75);
+    }
     stars.material.uniforms.uTime.value = time;
+    auroraLight.intensity = 1.4 + eased * 2.6;
     group.rotation.y = Math.sin(time * 0.01) * 0.06;
   }
 
-  return { group, update };
+  return { group, update, pulse };
 }

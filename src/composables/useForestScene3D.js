@@ -79,6 +79,7 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     scene.fog = new THREE.FogExp2(0x9db7a9, 0.011);
     const camera = new THREE.PerspectiveCamera(33, 1, 0.1, 80);
     const cameraTarget = new THREE.Vector3(0, 0.2, 0);
+    let targetTargetY = cameraTarget.y;
     let cameraYaw = 0.45;
     let targetYaw = cameraYaw;
     let cameraPitch = 0.48;
@@ -998,6 +999,7 @@ void main() {
     let hoverTree = null;
     let hoverRock = null;
     let hoverFirefly = null;
+    let hoverCold = null;
     let hoverInteractive = false;
     const sparks = [];
     const waterDrops = [];
@@ -1017,6 +1019,27 @@ void main() {
         Math.cos(cameraYaw) * horizontal,
       );
       camera.lookAt(cameraTarget);
+    }
+    function currentView() {
+      return scenes[state.scene]?.view;
+    }
+    function clampOrbitTargets() {
+      const view = currentView();
+      const minPitch = view?.minPitch ?? 0.17;
+      const maxPitch = view?.maxPitch ?? 0.92;
+      targetPitch = THREE.MathUtils.clamp(targetPitch, minPitch, maxPitch);
+      if (view?.yawRange) {
+        targetYaw = THREE.MathUtils.clamp(targetYaw, view.yaw - view.yawRange, view.yaw + view.yawRange);
+      }
+    }
+    function resetCameraToScene() {
+      const view = currentView();
+      targetYaw = view?.yaw ?? 0.45;
+      targetPitch = view?.pitch ?? 0.48;
+      targetDistance = fitDistance * (view?.zoom ?? 1);
+      targetTargetY = view?.targetY ?? 0.2;
+      clampOrbitTargets();
+      dirty = true;
     }
     function resize() {
       const rect = view.getBoundingClientRect();
@@ -1139,7 +1162,6 @@ void main() {
       const polar = state.scene === "aurora";
       const coldNight = polar || (alpine && state.phase === "night");
       const blueHour = alpine && state.phase === "morning";
-      const dusk = alpine && state.phase === "afternoon";
       const coldMood = polar
         ? POLAR_MOOD
         : coldNight
@@ -1175,16 +1197,19 @@ void main() {
         color(ambientLight, "groundColor", 0x423b2d);
       }
       if (lastScene !== state.scene) {
-        const view = scenes[state.scene]?.view;
+        const view = currentView();
         if (view) {
           targetYaw = view.yaw;
           targetPitch = view.pitch;
           targetDistance = fitDistance * view.zoom;
+          targetTargetY = view.targetY ?? 0.2;
         } else {
           targetYaw = 0.45;
           targetPitch = 0.48;
           targetDistance = fitDistance;
+          targetTargetY = 0.2;
         }
+        clampOrbitTargets();
         lastScene = state.scene;
       }
       dirty = true;
@@ -1282,8 +1307,24 @@ void main() {
       fireflyGather.target.copy(island.worldToLocal(point.clone()));
       fireflyGather.until = performance.now() + 2600;
     }
+    function coldTargets() {
+      if (state.scene === "alpine") return [cold.cabin.group];
+      if (state.scene === "aurora") return [cold.hut.group, cold.glacier.group, cold.aurora.group];
+      return [];
+    }
     function interact(event) {
       pointFromPointer(event);
+      const coldScene = state.scene === "alpine" || state.scene === "aurora";
+      if (coldScene) {
+        const coldHit = raycaster.intersectObjects(coldTargets(), true)[0];
+        if (coldHit) {
+          const action = cold.interact(coldHit);
+          const tint = action === "aurora" ? 0x72ffd2 : action === "glacier" ? 0xbdefff : 0xffd39a;
+          burstAt(coldHit.point, true, tint);
+          dirty = true;
+          return;
+        }
+      }
       const snowmanHit = snowman.visible ? raycaster.intersectObject(snowman, true)[0] : null;
       if (snowmanHit) {
         snowman.userData.reactionUntil = performance.now() + 950;
@@ -1416,7 +1457,8 @@ void main() {
         if (Math.abs(dx) + Math.abs(dy) > 5) dragged = true;
         if (dragged) {
           targetYaw = dragStart.yaw - dx * 0.004;
-          targetPitch = THREE.MathUtils.clamp(dragStart.pitch + dy * 0.0024, 0.17, 0.92);
+          targetPitch = dragStart.pitch + dy * 0.0024;
+          clampOrbitTargets();
         }
       } else {
         pointFromPointer(event);
@@ -1435,7 +1477,10 @@ void main() {
         const hoverSnowman = snowman.visible && Boolean(raycaster.intersectObject(snowman, true)[0]);
         const hoverFlower = flowerBeds.visible && Boolean(raycaster.intersectObjects(flowerBeds.children, false)[0]);
         const hoverWater = Boolean(raycaster.intersectObject(stream, false)[0] || raycaster.intersectObjects(waterfalls, false)[0]);
-        hoverInteractive = Boolean(hoverTree || hoverRock || hoverFirefly || hoverSnowman || hoverFlower || hoverWater);
+        const coldScene = state.scene === "alpine" || state.scene === "aurora";
+        const coldHoverHit = coldScene ? raycaster.intersectObjects(coldTargets(), true)[0] : null;
+        hoverCold = coldHoverHit ? cold.actionFor(coldHoverHit.object) : null;
+        hoverInteractive = Boolean(hoverTree || hoverRock || hoverFirefly || hoverSnowman || hoverFlower || hoverWater || hoverCold);
         canvas.style.cursor = hoverInteractive ? "pointer" : "grab";
       }
       dirty = true;
@@ -1453,7 +1498,7 @@ void main() {
       pointerDown = null;
       canvas.style.cursor = "grab";
     }
-    function onPointerLeave() { hoverTree = null; hoverRock = null; hoverFirefly = null; hoverInteractive = false; dirty = true; }
+    function onPointerLeave() { hoverTree = null; hoverRock = null; hoverFirefly = null; hoverCold = null; hoverInteractive = false; dirty = true; }
     function onWheel(event) {
       const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? view.clientHeight : 1);
       targetDistance = THREE.MathUtils.clamp(targetDistance + delta * 0.0005 * fitDistance, fitDistance * 0.76, fitDistance * 1.38);
@@ -1465,15 +1510,16 @@ void main() {
       event.preventDefault();
       if (event.key === "ArrowLeft") targetYaw -= 0.15;
       else if (event.key === "ArrowRight") targetYaw += 0.15;
-      else if (event.key === "ArrowUp") targetPitch = Math.min(0.92, targetPitch + 0.08);
-      else if (event.key === "ArrowDown") targetPitch = Math.max(0.17, targetPitch - 0.08);
+      else if (event.key === "ArrowUp") targetPitch += 0.08;
+      else if (event.key === "ArrowDown") targetPitch -= 0.08;
       else if (["+", "="].includes(event.key)) targetDistance = Math.max(fitDistance * 0.76, targetDistance - fitDistance * 0.06);
       else if (event.key === "-") targetDistance = Math.min(fitDistance * 1.38, targetDistance + fitDistance * 0.06);
-      else if (event.key === "Home") { targetYaw = 0.45; targetPitch = 0.48; targetDistance = fitDistance; }
+      else if (event.key === "Home") resetCameraToScene();
       else {
         const rect = canvas.getBoundingClientRect();
         interact({ clientX: rect.left + rect.width * 0.5, clientY: rect.top + rect.height * 0.5 });
       }
+      clampOrbitTargets();
       dirty = true;
     }
     canvas.addEventListener("pointerdown", onPointerDown);
@@ -1518,15 +1564,16 @@ void main() {
       sceneUniforms.uTime.value += timeStep;
       let moving = false;
       const blend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 6);
+      const moodBlend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 2.2);
       moodTargets = moodTargets.filter(({ object, property, value }) => {
         if (value.isColor) {
           const current = object[property];
           const distance = Math.abs(current.r - value.r) + Math.abs(current.g - value.g) + Math.abs(current.b - value.b);
           if (distance < 0.002 || reducedMotion.matches) { current.copy(value); dirty = true; return false; }
-          current.lerp(value, blend);
+          current.lerp(value, moodBlend);
         } else {
           if (Math.abs(object[property] - value) < 0.002 || reducedMotion.matches) { object[property] = value; dirty = true; return false; }
-          object[property] += (value - object[property]) * blend;
+          object[property] += (value - object[property]) * moodBlend;
         }
         moving = true;
         return true;
@@ -1571,14 +1618,16 @@ void main() {
       }
       waterUniforms.uSunDir.value.copy(sunlight.position).normalize();
       sceneUniforms.uSunView.value.copy(waterUniforms.uSunDir.value).transformDirection(camera.matrixWorldInverse);
-      if (cameraYaw !== targetYaw || cameraPitch !== targetPitch || cameraDistance !== targetDistance) {
-        const cameraBlend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 8);
+      if (cameraYaw !== targetYaw || cameraPitch !== targetPitch || cameraDistance !== targetDistance || cameraTarget.y !== targetTargetY) {
+        const cameraBlend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 5.2);
         cameraYaw += (targetYaw - cameraYaw) * cameraBlend;
         cameraPitch += (targetPitch - cameraPitch) * cameraBlend;
         cameraDistance += (targetDistance - cameraDistance) * cameraBlend;
+        cameraTarget.y += (targetTargetY - cameraTarget.y) * cameraBlend;
         if (Math.abs(cameraYaw - targetYaw) < 0.001) cameraYaw = targetYaw;
         if (Math.abs(cameraPitch - targetPitch) < 0.001) cameraPitch = targetPitch;
         if (Math.abs(cameraDistance - targetDistance) < 0.01) cameraDistance = targetDistance;
+        if (Math.abs(cameraTarget.y - targetTargetY) < 0.002) cameraTarget.y = targetTargetY;
         updateCamera();
         moving = true;
       }

@@ -6,6 +6,7 @@ export const scenes = {
     description: "深呼吸。听见风，也听见自己。",
     phase: "morning",
     weather: "mist",
+    view: { yaw: 0.58, pitch: 0.36, zoom: 1.03, targetY: 0.38, yawRange: 2.6, minPitch: 0.22, maxPitch: 0.82 },
   },
   rain: {
     title: "雨落青苔",
@@ -14,6 +15,7 @@ export const scenes = {
     description: "让雨声落下，把心事轻轻放下。",
     phase: "afternoon",
     weather: "rain",
+    view: { yaw: 0.48, pitch: 0.4, zoom: 1.02, targetY: 0.32, yawRange: 2.6, minPitch: 0.2, maxPitch: 0.78 },
   },
   night: {
     title: "萤火之境",
@@ -22,6 +24,7 @@ export const scenes = {
     description: "世界安静下来，微光慢慢亮起。",
     phase: "night",
     weather: "clear",
+    view: { yaw: 0.42, pitch: 0.34, zoom: 1.05, targetY: 0.36, yawRange: 2.6, minPitch: 0.2, maxPitch: 0.8 },
   },
   snow: {
     title: "雪落松林",
@@ -30,6 +33,7 @@ export const scenes = {
     description: "围一围暖意，让雪替世界放慢脚步。",
     phase: "morning",
     weather: "snow",
+    view: { yaw: 0.55, pitch: 0.35, zoom: 1.04, targetY: 0.38, yawRange: 2.6, minPitch: 0.2, maxPitch: 0.8 },
   },
   alpine: {
     title: "雪境木屋",
@@ -46,7 +50,7 @@ export const scenes = {
     phaseLabels: { morning: "蓝调清晨", afternoon: "黄昏暖窗", night: "夜晚灯火" },
     icon: "cabin",
     biome: "alpine",
-    view: { yaw: 0.32, pitch: 0.32, zoom: 1.0 },
+    view: { yaw: 0.34, pitch: 0.28, zoom: 0.98, targetY: 0.42, yawRange: 0.55, minPitch: 0.2, maxPitch: 0.55 },
   },
   aurora: {
     title: "极光冰原",
@@ -60,7 +64,7 @@ export const scenes = {
     lockedPhase: true,
     icon: "aurora",
     biome: "antarctic",
-    view: { yaw: -0.2, pitch: 0.26, zoom: 1.03 },
+    view: { yaw: -0.26, pitch: 0.22, zoom: 1.02, targetY: 0.5, yawRange: 0.5, minPitch: 0.18, maxPitch: 0.5 },
   },
 };
 

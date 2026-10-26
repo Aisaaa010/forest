@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { sceneUniforms } from "./materials.js";
+import { enhanceMaterial, sceneUniforms } from "./materials.js";
 
 const TAU = Math.PI * 2;
 
@@ -118,13 +118,19 @@ function makeWindowHalo(width, height, z, color = 0xffa452, opacity = 0.2) {
 export function createAlpineCabin() {
   const group = new THREE.Group();
   group.name = "alpine log cabin";
-  const wood = new THREE.MeshStandardMaterial({ color: 0x604634, roughness: 0.92 });
-  const woodLight = new THREE.MeshStandardMaterial({ color: 0x7b5a40, roughness: 0.9 });
+  const wood = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x604634, roughness: 0.92 }), {
+    detail: { scale: 15, normalStrength: 0.1, stretch: [1, 2.2, 1] },
+  });
+  const woodLight = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x7b5a40, roughness: 0.9 }), {
+    detail: { scale: 18, normalStrength: 0.08, stretch: [1, 2.4, 1] },
+  });
   const stone = new THREE.MeshStandardMaterial({ color: 0x716e60, roughness: 0.96, flatShading: true });
   const snow = new THREE.MeshStandardMaterial({ color: 0xe9f0ef, roughness: 0.72 });
   const roofDark = new THREE.MeshStandardMaterial({ color: 0x4e3b2f, roughness: 0.95 });
   const windowMaterial = new THREE.MeshBasicMaterial({ color: 0xffc477 });
-  const door = new THREE.MeshStandardMaterial({ color: 0x3e2e24, roughness: 0.9 });
+  const door = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x3e2e24, roughness: 0.9 }), {
+    detail: { scale: 20, normalStrength: 0.1, stretch: [1, 2.6, 1] },
+  });
   const metal = new THREE.MeshStandardMaterial({ color: 0x4e5558, roughness: 0.45, metalness: 0.35 });
 
   group.add(box(0.92, 0.08, 0.7, stone, 0, 0.04, 0));
@@ -160,16 +166,52 @@ export function createAlpineCabin() {
   const smoke = makeSmoke(sceneUniforms.uTime, 1.1);
   smoke.position.set(0.22, 1.02, -0.12);
   group.add(smoke);
-  // Warm windows with simple frames.
+  // Warm windows with simple frames, mounted proud of the log wall so the
+  // log courses do not swallow the panes.
   for (const x of [-0.19, 0.19]) {
-    group.add(box(0.17, 0.13, 0.018, windowMaterial, x, 0.34, 0.278));
-    group.add(box(0.2, 0.16, 0.02, woodLight, x, 0.34, 0.272));
-    group.add(box(0.14, 0.11, 0.025, windowMaterial, x, 0.34, 0.284));
+    group.add(box(0.17, 0.13, 0.018, windowMaterial, x, 0.34, 0.322));
+    group.add(box(0.2, 0.16, 0.02, woodLight, x, 0.34, 0.314));
+    group.add(box(0.14, 0.11, 0.025, windowMaterial, x, 0.34, 0.329));
   }
-  group.add(box(0.14, 0.24, 0.025, door, 0, 0.2, 0.282));
+  group.add(box(0.14, 0.24, 0.025, door, 0, 0.2, 0.325));
+  // Door frame and porch.
+  group.add(box(0.012, 0.26, 0.025, woodLight, -0.082, 0.21, 0.333));
+  group.add(box(0.012, 0.26, 0.025, woodLight, 0.082, 0.21, 0.333));
+  group.add(box(0.176, 0.018, 0.03, woodLight, 0, 0.34, 0.333));
   group.add(box(0.58, 0.035, 0.16, woodLight, 0, 0.11, 0.34));
+  group.add(box(0.42, 0.025, 0.1, woodLight, 0, 0.085, 0.43));
+  // Window mullions over the warm panes.
+  for (const x of [-0.19, 0.19]) {
+    group.add(box(0.014, 0.112, 0.01, wood, x, 0.34, 0.337));
+    group.add(box(0.14, 0.014, 0.01, wood, x, 0.34, 0.337));
+  }
+  // Stacked firewood and a snow shovel beside the porch.
+  for (let i = 0; i < 7; i++) {
+    const log = cylinder(0.018, 0.02, 0.22, i % 2 ? woodLight : wood, -0.52, 0.07 + Math.floor(i / 3) * 0.04, 0.12 + (i % 3) * 0.045, 6);
+    log.rotation.z = Math.PI / 2;
+    group.add(log);
+  }
+  const shovel = cylinder(0.007, 0.009, 0.36, woodLight, 0.52, 0.24, 0.3, 5);
+  shovel.rotation.z = 0.22;
+  group.add(shovel);
+  group.add(box(0.07, 0.11, 0.015, metal, 0.57, 0.07, 0.3));
+  // Irregular foundation stones break up the straight base.
+  for (let i = 0; i < 6; i++) {
+    const stoneChunk = new THREE.Mesh(new THREE.DodecahedronGeometry(0.045 + (i % 2) * 0.012, 0), stone);
+    stoneChunk.position.set(-0.4 + i * 0.16, 0.035, 0.33 + (i % 2) * 0.03);
+    stoneChunk.rotation.set(i, i * 1.7, i * 0.4);
+    stoneChunk.scale.y = 0.55;
+    group.add(stoneChunk);
+  }
+  // A few snow chunks on the eaves and step.
+  for (const [x, y, z, s] of [[-0.42, 0.7, 0.3, 0.07], [0.12, 0.68, 0.33, 0.05], [0.4, 0.7, -0.28, 0.06]]) {
+    const chunk = new THREE.Mesh(new THREE.SphereGeometry(s, 7, 5), snow);
+    chunk.position.set(x, y, z);
+    chunk.scale.y = 0.5;
+    group.add(chunk);
+  }
   // A small lantern beside the door.
-  group.add(box(0.035, 0.06, 0.035, new THREE.MeshBasicMaterial({ color: 0xffd58f }), -0.25, 0.25, 0.31));
+  group.add(box(0.035, 0.06, 0.035, new THREE.MeshBasicMaterial({ color: 0xffd58f }), -0.25, 0.25, 0.34));
   // Icicles under the eaves.
   const ice = new THREE.MeshPhysicalMaterial({ color: 0xcfeaf2, roughness: 0.2, transparent: true, opacity: 0.8 });
   for (let i = 0; i < 5; i++) {
@@ -186,7 +228,7 @@ export function createAlpineCabin() {
   group.add(groundLight);
   const pool = makeWarmPool(2.8, 2.0, 0xffa452, 0.42);
   group.add(pool);
-  const halo = makeWindowHalo(0.34, 0.25, 0.287);
+  const halo = makeWindowHalo(0.34, 0.25, 0.34);
   group.add(halo);
   // A few warm bulbs along the porch edge, like a quiet string of lights.
   for (let i = 0; i < 9; i++) {

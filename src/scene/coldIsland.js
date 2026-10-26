@@ -288,6 +288,20 @@ export function buildColdIsland() {
     stone.receiveShadow = true;
     alpineGroup.add(stone);
   }
+  // Compressed footprints in the snow beside the path.
+  const footprintMaterial = new THREE.MeshStandardMaterial({ color: 0x6f8597, roughness: 0.95 });
+  for (let i = 0; i < 9; i++) {
+    const t = i / 8;
+    const targetX = pondX - 0.78;
+    const targetZ = pondZ - 0.08;
+    const x = cabinX + t * (targetX - cabinX) + (i % 2 ? 0.09 : -0.09);
+    const z = cabinZ + t * (targetZ - cabinZ);
+    const print = new THREE.Mesh(new THREE.SphereGeometry(0.045, 7, 5), footprintMaterial);
+    print.position.set(x, heightAt(x, z) + 0.012, z);
+    print.scale.set(0.75, 0.1, 1.15);
+    print.rotation.y = t * 1.4;
+    alpineGroup.add(print);
+  }
   // A short picket fence frames the left foreground like the reference photos.
   for (let i = 0; i < 5; i++) {
     const x = -3.55;
@@ -337,7 +351,7 @@ export function buildColdIsland() {
   polarGroup.add(hut.group);
   // A single continuous glacier wall behind the hut, with fissures and blocky
   // seracs. No cone primitives are used for the ice.
-  const glacier = createGlacierWall({ heightAt, snowMaterial });
+  const glacier = createGlacierWall({ heightAt });
   polarGroup.add(glacier.group);
   const iceCrackPositions = [];
   for (let i = 0; i < 14; i++) {
@@ -402,6 +416,17 @@ void main() {
   const aurora = createAurora();
   group.add(aurora.group);
 
+  cabin.group.userData.coldAction = "cabin";
+  hut.group.userData.coldAction = "hut";
+  glacier.group.userData.coldAction = "glacier";
+  aurora.group.userData.coldAction = "aurora";
+  let cabinPulseUntil = 0;
+  let hutPulseUntil = 0;
+  let glacierPulseUntil = 0;
+  let cabinBase = { light: 0, ground: 0, pool: 0, halo: 0 };
+  let hutBase = { light: 0, ground: 0, pool: 0, halo: 0 };
+  let glacierBaseEmissive = 0.38;
+
   function setMode(mode, phase, mood) {
     const alpine = mode === "alpine";
     const polar = mode === "aurora";
@@ -412,26 +437,78 @@ void main() {
     ridgeGroup.visible = alpine;
     glacier.group.visible = polar;
     if (alpine && mood) {
-      cabin.windowMaterial.color.setHex(mood.window.color);
+      cabin.windowMaterial.color.setHex(mood.window.color).multiplyScalar(mood.window.factor ?? 1);
       cabin.light.intensity = mood.window.intensity;
       cabin.light.color.setHex(mood.window.color);
       cabin.groundLight.intensity = mood.groundLight;
       cabin.pool.material.uniforms.uOpacity.value = mood.pool;
       cabin.halo.material.opacity = mood.halo;
+      cabinBase = {
+        light: mood.window.intensity,
+        ground: mood.groundLight,
+        pool: mood.pool,
+        halo: mood.halo,
+      };
     }
     if (polar && mood) {
-      hut.windowMaterial.color.setHex(mood.window.color);
+      hut.windowMaterial.color.setHex(mood.window.color).multiplyScalar(mood.window.factor ?? 1);
       hut.light.intensity = mood.window.intensity;
       hut.light.color.setHex(mood.window.color);
       hut.groundLight.intensity = mood.groundLight;
       hut.pool.material.uniforms.uOpacity.value = mood.pool;
       hut.halo.material.opacity = mood.halo;
+      hutBase = {
+        light: mood.window.intensity,
+        ground: mood.groundLight,
+        pool: mood.pool,
+        halo: mood.halo,
+      };
     }
+    glacierBaseEmissive = glacier.material.emissiveIntensity;
+  }
+
+  function actionFor(object) {
+    let node = object;
+    while (node && node !== group) {
+      if (node.userData?.coldAction) return node.userData.coldAction;
+      node = node.parent;
+    }
+    return null;
+  }
+
+  function interact(hit) {
+    const action = actionFor(hit?.object);
+    if (!action) return null;
+    const now = sceneUniforms.uTime.value;
+    if (action === "cabin") cabinPulseUntil = now + 1.3;
+    else if (action === "hut") hutPulseUntil = now + 1.3;
+    else if (action === "glacier") glacierPulseUntil = now + 1.0;
+    else if (action === "aurora") aurora.pulse();
+    return action;
   }
 
   function update(time) {
     if (aurora.group.visible) aurora.update(time);
+    if (forestLife.visible) {
+      const p = Math.max(0, (cabinPulseUntil - time) / 1.3);
+      const e = p * p;
+      const flicker = 1 + Math.sin(time * 1.7) * 0.012 + Math.sin(time * 4.3 + 1.2) * 0.006;
+      cabin.light.intensity = cabinBase.light * flicker + e * 1.5;
+      cabin.groundLight.intensity = cabinBase.ground + e * 1.0;
+      cabin.pool.material.uniforms.uOpacity.value = cabinBase.pool + e * 0.18;
+      cabin.halo.material.opacity = cabinBase.halo + e * 0.1;
+    }
+    if (polarGroup.visible) {
+      const hp = Math.max(0, (hutPulseUntil - time) / 1.3);
+      const he = hp * hp;
+      const flicker = 1 + Math.sin(time * 1.9 + 0.6) * 0.01;
+      hut.light.intensity = hutBase.light * flicker + he * 1.2;
+      hut.halo.material.opacity = hutBase.halo + he * 0.1;
+      const gp = Math.max(0, (glacierPulseUntil - time) / 1.0);
+      glacier.material.emissiveIntensity = glacierBaseEmissive + gp * 0.5;
+      glacier.group.scale.setScalar(1 + gp * 0.004);
+    }
   }
 
-  return { group, setMode, update, cabin, hut, aurora, treeSpots, terrain };
+  return { group, setMode, update, interact, actionFor, cabin, hut, aurora, glacier, treeSpots, terrain };
 }

@@ -234,7 +234,7 @@ body { overflow: hidden; overscroll-behavior: none; }
   .island-bottom-tools > button { gap: 6px; padding: 8px 11px; font-size: 10px; min-height: 35px; }
   .island-bottom-tools .sound-bars { display: none; }
   .island-gesture-hint { left: 24px; bottom: 161px; font-size: 8px; }
-  .island-gesture-hint span { display: none; }
+  .island-gesture-hint span { display: block; max-width: 230px; }
   .island-session { bottom: 160px; right: 23px; }
   .island-session > span { display: none; }
   .island-session strong { font-size: 12px; }
