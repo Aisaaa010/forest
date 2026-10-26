@@ -185,15 +185,15 @@ export function buildColdIsland() {
   trees.forEach((tree) => forestLife.add(tree));
   forestLife.add(roots, mossPatches);
   const smallCabinX = 2.7;
-  const smallCabinZ = 0.85;
+  const smallCabinZ = 0.35;
   const fireX = 1.9;
   const fireZ = 2.65;
   const avoid = [
     ...treeSpots.map(([x, z, s]) => [x, z, 0.09 * s]),
     [-2.3, 1.3, 0.65],
     [pondX, pondZ, 0.95],
-    [smallCabinX, smallCabinZ, 0.62],
-    [fireX, fireZ, 0.52],
+    [smallCabinX, smallCabinZ, 0.78],
+    [fireX, fireZ, 0.58],
   ];
   const grass = buildGrass({
     count: 1500,
@@ -264,13 +264,13 @@ export function buildColdIsland() {
   const smallCabin = createSmallCabin();
   smallCabin.group.position.set(smallCabinX, heightAt(smallCabinX, smallCabinZ), smallCabinZ);
   smallCabin.group.rotation.y = -0.52;
-  smallCabin.group.scale.setScalar(0.92);
+  smallCabin.group.scale.setScalar(1.15);
   alpineGroup.add(smallCabin.group);
 
   const campfire = createCampfire();
   campfire.group.position.set(fireX, heightAt(fireX, fireZ) + 0.01, fireZ);
   campfire.group.rotation.y = 0.24;
-  campfire.group.scale.setScalar(0.95);
+  campfire.group.scale.setScalar(1.0);
   alpineGroup.add(campfire.group);
 
   // Fence around the clearing.

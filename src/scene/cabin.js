@@ -255,74 +255,133 @@ export function createAlpineCabin() {
   return { group, windowMaterial, light, groundLight, smoke, pool, halo };
 }
 
-// A smaller sauna-like cabin on the right side of the alpine clearing.
+// A smaller but fully detailed sauna-like cabin on the right side of the
+// alpine clearing. It is deliberately built from the same rounded log language
+// as the main cabin, with a porch, shutters, stone footings and a side porthole.
 export function createSmallCabin() {
   const group = new THREE.Group();
   group.name = "small alpine cabin";
-  const wood = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x5c4432, roughness: 0.94 }), {
-    detail: { scale: 16, normalStrength: 0.1, stretch: [1, 2.2, 1] },
+  const wood = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x59412f, roughness: 0.94 }), {
+    detail: { scale: 16, normalStrength: 0.11, stretch: [1, 2.2, 1] },
   });
   const woodLight = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x78573e, roughness: 0.9 }), {
-    detail: { scale: 20, normalStrength: 0.08, stretch: [1, 2.4, 1] },
+    detail: { scale: 20, normalStrength: 0.09, stretch: [1, 2.4, 1] },
   });
   const stone = new THREE.MeshStandardMaterial({ color: 0x706d60, roughness: 0.96, flatShading: true });
-  const snow = new THREE.MeshStandardMaterial({ color: 0xe9f0ef, roughness: 0.72 });
+  const snow = new THREE.MeshStandardMaterial({ color: 0xe9f0ef, roughness: 0.74 });
   const roofDark = new THREE.MeshStandardMaterial({ color: 0x4a392d, roughness: 0.95 });
   const windowMaterial = new THREE.MeshBasicMaterial({ color: 0xffc477 });
-  const door = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x3d2d23, roughness: 0.92 }), {
-    detail: { scale: 18, normalStrength: 0.08, stretch: [1, 2.4, 1] },
+  const door = enhanceMaterial(new THREE.MeshStandardMaterial({ color: 0x3b2b20, roughness: 0.92 }), {
+    detail: { scale: 18, normalStrength: 0.1, stretch: [1, 2.4, 1] },
   });
   const metal = new THREE.MeshStandardMaterial({ color: 0x4e5558, roughness: 0.45, metalness: 0.35 });
+  const ice = new THREE.MeshPhysicalMaterial({ color: 0xcfeaf2, roughness: 0.2, transparent: true, opacity: 0.82 });
 
-  group.add(box(0.68, 0.06, 0.52, stone, 0, 0.03, 0));
-  group.add(box(0.56, 0.32, 0.42, wood, 0, 0.22, 0));
-  for (const z of [-0.23, 0.23]) {
+  // Stone footing and the inner timber body.
+  group.add(box(0.86, 0.08, 0.68, stone, 0, 0.04, 0));
+  group.add(box(0.7, 0.44, 0.52, wood, 0, 0.3, 0));
+  for (const z of [-0.265, 0.265]) {
+    for (let i = 0; i < 4; i++) {
+      group.add(logCapsule(0.028, 0.62, woodLight, 0, 0.13 + i * 0.1, z, "x"));
+    }
+  }
+  for (const x of [-0.36, 0.36]) {
     for (let i = 0; i < 3; i++) {
-      group.add(logCapsule(0.021, 0.5, woodLight, 0, 0.1 + i * 0.08, z, "x"));
+      group.add(logCapsule(0.026, 0.44, woodLight, x, 0.17 + i * 0.1, 0, "z"));
     }
   }
-  for (const x of [-0.3, 0.3]) {
-    for (let i = 0; i < 2; i++) {
-      group.add(logCapsule(0.019, 0.36, woodLight, x, 0.13 + i * 0.1, 0, "z"));
-    }
-  }
+  // Thick snow roof with a proper eave overhang.
   for (const side of [-1, 1]) {
-    const slab = box(0.68, 0.04, 0.3, roofDark, 0, 0.43, side * 0.12);
-    slab.rotation.x = side * 0.55;
+    const slab = box(0.88, 0.05, 0.4, roofDark, 0, 0.56, side * 0.15);
+    slab.rotation.x = side * 0.52;
     group.add(slab);
-    const snowSlab = box(0.7, 0.045, 0.29, snow, 0, 0.47, side * 0.12);
-    snowSlab.rotation.x = side * 0.55;
+    const snowSlab = box(0.92, 0.07, 0.38, snow, 0, 0.6, side * 0.15);
+    snowSlab.rotation.x = side * 0.52;
     group.add(snowSlab);
   }
-  group.add(box(0.54, 0.12, 0.05, woodLight, 0, 0.36, 0.21));
-  group.add(box(0.08, 0.3, 0.08, stone, 0.17, 0.56, -0.1));
-  group.add(box(0.11, 0.04, 0.11, metal, 0.17, 0.72, -0.1));
-  // Warm sauna window and a timber door.
-  group.add(box(0.11, 0.1, 0.018, windowMaterial, 0.12, 0.27, 0.26));
-  group.add(box(0.14, 0.13, 0.022, woodLight, 0.12, 0.27, 0.252));
-  group.add(box(0.13, 0.09, 0.02, windowMaterial, 0.12, 0.27, 0.266));
-  group.add(box(0.01, 0.09, 0.008, wood, 0.12, 0.27, 0.27));
-  group.add(box(0.1, 0.18, 0.02, door, -0.14, 0.18, 0.258));
-  group.add(box(0.012, 0.2, 0.025, woodLight, -0.2, 0.19, 0.266));
-  group.add(box(0.012, 0.2, 0.025, woodLight, -0.08, 0.19, 0.266));
-  group.add(box(0.12, 0.015, 0.028, woodLight, -0.14, 0.29, 0.266));
-  const smoke = makeSmoke(sceneUniforms.uTime, 0.7);
-  smoke.position.set(0.17, 0.74, -0.1);
-  group.add(smoke);
-  const light = new THREE.PointLight(0xffb45e, 0.8, 2.5, 2);
-  light.position.set(0.12, 0.3, 0.3);
-  group.add(light);
-  const pool = makeWarmPool(1.5, 1.1, 0xffa452, 0.22);
-  group.add(pool);
-  const halo = makeWindowHalo(0.2, 0.16, 0.274);
-  halo.position.y = 0.27;
-  group.add(halo);
-  const ice = new THREE.MeshPhysicalMaterial({ color: 0xcfeaf2, roughness: 0.2, transparent: true, opacity: 0.8 });
-  for (let i = 0; i < 4; i++) {
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.01, 0.06 + (i % 2) * 0.025, 5).rotateX(Math.PI), ice);
-    spike.position.set(-0.25 + i * 0.16, 0.38, 0.22);
+  group.add(box(0.64, 0.2, 0.06, woodLight, 0, 0.49, 0.27));
+  // Stone chimney with a metal cap.
+  group.add(box(0.1, 0.4, 0.1, stone, 0.23, 0.69, -0.12));
+  group.add(box(0.14, 0.045, 0.14, metal, 0.23, 0.9, -0.12));
+  // Porch deck, posts and a small snow-covered awning.
+  group.add(box(0.5, 0.035, 0.2, woodLight, -0.02, 0.105, 0.38));
+  for (const x of [-0.23, 0.19]) {
+    group.add(cylinder(0.014, 0.016, 0.27, woodLight, x, 0.24, 0.47, 6));
+    group.add(box(0.036, 0.026, 0.036, snow, x, 0.38, 0.47));
+  }
+  const awning = box(0.54, 0.035, 0.2, woodLight, -0.02, 0.38, 0.4);
+  awning.rotation.x = 0.12;
+  group.add(awning);
+  const awningSnow = box(0.56, 0.04, 0.19, snow, -0.02, 0.41, 0.4);
+  awningSnow.rotation.x = 0.12;
+  group.add(awningSnow);
+  // Door with frame, threshold and iron handle.
+  group.add(box(0.14, 0.26, 0.022, door, -0.12, 0.27, 0.3));
+  group.add(box(0.012, 0.28, 0.028, woodLight, -0.195, 0.27, 0.306));
+  group.add(box(0.012, 0.28, 0.028, woodLight, -0.045, 0.27, 0.306));
+  group.add(box(0.16, 0.016, 0.03, woodLight, -0.12, 0.405, 0.306));
+  group.add(box(0.17, 0.022, 0.1, woodLight, -0.12, 0.12, 0.35));
+  const handle = new THREE.Mesh(new THREE.SphereGeometry(0.009, 8, 6), metal);
+  handle.position.set(-0.08, 0.26, 0.318);
+  group.add(handle);
+  // Window, frame, muntins and timber shutters.
+  group.add(box(0.18, 0.15, 0.02, windowMaterial, 0.16, 0.33, 0.3));
+  group.add(box(0.22, 0.19, 0.024, woodLight, 0.16, 0.33, 0.29));
+  group.add(box(0.15, 0.12, 0.022, windowMaterial, 0.16, 0.33, 0.312));
+  group.add(box(0.008, 0.12, 0.008, wood, 0.16, 0.33, 0.318));
+  group.add(box(0.15, 0.008, 0.008, wood, 0.16, 0.33, 0.318));
+  for (const x of [0.045, 0.275]) {
+    group.add(box(0.055, 0.18, 0.02, woodLight, x, 0.33, 0.292));
+  }
+  // A small round window on the gable side.
+  const porthole = new THREE.Mesh(new THREE.CircleGeometry(0.055, 16), windowMaterial);
+  porthole.position.set(0.392, 0.35, 0.02);
+  porthole.rotation.y = Math.PI / 2;
+  group.add(porthole);
+  const portholeRim = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.008, 6, 16), woodLight);
+  portholeRim.position.copy(porthole.position);
+  portholeRim.rotation.y = Math.PI / 2;
+  group.add(portholeRim);
+  // Woodpile and a lantern beside the porch.
+  for (let i = 0; i < 6; i++) {
+    group.add(logCapsule(0.019, 0.24, i % 2 ? woodLight : wood, -0.54, 0.07 + Math.floor(i / 3) * 0.04, 0.08 + (i % 3) * 0.04, "x"));
+  }
+  const lanternPost = cylinder(0.009, 0.012, 0.22, woodLight, 0.34, 0.18, 0.4, 5);
+  group.add(lanternPost);
+  const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffc46a }));
+  lantern.position.set(0.34, 0.31, 0.4);
+  group.add(lantern);
+  // Icicles and snow chunks along the eaves.
+  for (let i = 0; i < 5; i++) {
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.07 + (i % 3) * 0.025, 5).rotateX(Math.PI), ice);
+    spike.position.set(-0.28 + i * 0.15, 0.48, 0.37);
     group.add(spike);
   }
+  for (const [x, y, z, s] of [[-0.38, 0.55, 0.34, 0.06], [0.16, 0.54, 0.37, 0.045], [0.38, 0.56, -0.32, 0.055]]) {
+    const chunk = new THREE.Mesh(new THREE.SphereGeometry(s, 7, 5), snow);
+    chunk.position.set(x, y, z);
+    chunk.scale.y = 0.5;
+    group.add(chunk);
+  }
+  // Irregular footing stones.
+  for (let i = 0; i < 6; i++) {
+    const foot = new THREE.Mesh(new THREE.DodecahedronGeometry(0.05 + (i % 2) * 0.012, 0), stone);
+    foot.position.set(-0.38 + i * 0.15, 0.035, 0.35 + (i % 2) * 0.02);
+    foot.rotation.set(i, i * 1.4, i * 0.3);
+    foot.scale.y = 0.55;
+    group.add(foot);
+  }
+  const smoke = makeSmoke(sceneUniforms.uTime, 0.78);
+  smoke.position.set(0.23, 0.92, -0.12);
+  group.add(smoke);
+  const light = new THREE.PointLight(0xffb45e, 0.95, 2.8, 2);
+  light.position.set(0.08, 0.34, 0.4);
+  group.add(light);
+  const pool = makeWarmPool(1.9, 1.4, 0xffa452, 0.28);
+  group.add(pool);
+  const halo = makeWindowHalo(0.26, 0.2, 0.322);
+  halo.position.y = 0.33;
+  group.add(halo);
   return { group, windowMaterial, light, smoke, pool, halo };
 }
 
@@ -349,16 +408,23 @@ export function createCampfire() {
   group.name = "campfire";
   const stone = new THREE.MeshStandardMaterial({ color: 0x68655b, roughness: 0.96, flatShading: true });
   const wood = new THREE.MeshStandardMaterial({ color: 0x4c3527, roughness: 0.95 });
+  const ash = new THREE.Mesh(new THREE.CircleGeometry(0.31, 20).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2a2723, roughness: 1 }));
+  ash.position.y = 0.012;
+  group.add(ash);
   for (let i = 0; i < 10; i++) {
     const angle = (i / 10) * TAU;
     const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.055 + (i % 3) * 0.012, 0), stone);
-    rock.position.set(Math.cos(angle) * 0.34, 0.035, Math.sin(angle) * 0.34);
+    rock.position.set(Math.cos(angle) * 0.36, 0.035, Math.sin(angle) * 0.36);
     rock.rotation.set(i, i * 1.7, i * 0.4);
     rock.scale.y = 0.7;
     rock.castShadow = true;
     rock.receiveShadow = true;
     group.add(rock);
   }
+  // A split log seat makes the fire feel used rather than staged.
+  const seat = logCapsule(0.06, 0.48, wood, -0.63, 0.075, 0.12, "z");
+  seat.rotation.y = 0.18;
+  group.add(seat);
   for (let i = 0; i < 3; i++) {
     const log = logCapsule(0.035, 0.42, wood, 0, 0.075, 0, i % 2 ? "x" : "z");
     log.rotation.y = i * 0.95;
