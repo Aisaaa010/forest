@@ -4,7 +4,7 @@ import { buildGrass } from "./flora.js";
 import { buildVines } from "./vines.js";
 import { createIslandTerrain, makeBoulderGeometry, rimPoint } from "./terrain.js";
 import { enhanceMaterial, sceneUniforms } from "./materials.js";
-import { makeWaterRibbon } from "./water.js";
+import { makeWaterRibbon, createWaterMaterial } from "./water.js";
 import { createAlpineCabin, createSmallCabin, createCampfire, createPolarHut } from "./cabin.js";
 import { createAurora } from "./aurora.js";
 import { createGlacierWall } from "./glacier.js";
@@ -225,8 +225,65 @@ export function buildColdIsland() {
     group.add(reed);
   }
 
-  // A soft cloud sea below the island gives the floating landscape a sense of
-  // altitude and hides the hard cut of the cliff base.
+  // Open water: a winding lead in the lake and a short moving channel in the
+  // frozen creek. The surrounding ice stays static; only these leads flow.
+  const makeColdWater = (curve, width, y, speed) => {
+    const bedRibbon = makeWaterRibbon(curve, 64, () => width + 0.022, () => y - 0.002);
+    const bed = new THREE.Mesh(bedRibbon.geometry, new THREE.MeshBasicMaterial({ color: 0x0c3447 }));
+    bed.renderOrder = 2;
+    group.add(bed);
+    const ribbon = makeWaterRibbon(curve, 64, () => width, () => y);
+    const material = createWaterMaterial(sceneUniforms.uTime, { speed, length: ribbon.length });
+    material.uniforms.uDeep = { value: new THREE.Color(0x0d3448) };
+    material.uniforms.uShallow = { value: new THREE.Color(0x4d9aab) };
+    material.uniforms.uSky = { value: new THREE.Color(0xb8dce8) };
+    material.uniforms.uFoam = { value: new THREE.Color(0xe9fbff) };
+    material.uniforms.uSunColor = { value: new THREE.Color(0xd8effa) };
+    material.uniforms.uSunDir = { value: new THREE.Vector3(-4, 5, 4).normalize() };
+    const water = new THREE.Mesh(ribbon.geometry, material);
+    water.renderOrder = 3;
+    group.add(water);
+    return water;
+  };
+  makeColdWater(
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(pondX - 0.62, pondY + 0.009, pondZ - 0.2),
+      new THREE.Vector3(pondX - 0.18, pondY + 0.009, pondZ - 0.07),
+      new THREE.Vector3(pondX + 0.22, pondY + 0.009, pondZ + 0.13),
+      new THREE.Vector3(pondX + 0.55, pondY + 0.009, pondZ + 0.01),
+    ]),
+    0.055,
+    pondY + 0.009,
+    0.18,
+  );
+  const creekPoints = streamCurve.getPoints(14).slice(3, 10).map((p) => new THREE.Vector3(p.x, 0.203, p.z));
+  makeColdWater(new THREE.CatmullRomCurve3(creekPoints), 0.04, 0.203, 0.25);
+
+  // Snow patches and frozen-in twigs break up the ice sheet.
+  for (const [x, z, sx, sz] of [[-0.34, -0.1, 0.3, 0.18], [0.38, 0.16, 0.24, 0.16], [0.0, -0.34, 0.2, 0.12]]) {
+    const patch = new THREE.Mesh(new THREE.SphereGeometry(0.25, 9, 6), snowMaterial);
+    patch.position.set(pondX + x, pondY + 0.007, pondZ + z);
+    patch.scale.set(sx, 0.025, sz);
+    patch.rotation.y = x * 3;
+    group.add(patch);
+  }
+  const twigMaterial = new THREE.MeshStandardMaterial({ color: 0x4d3b2c, roughness: 0.95 });
+  for (let i = 0; i < 5; i++) {
+    const twig = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.002, 0.09 + (i % 3) * 0.04), twigMaterial);
+    twig.position.set(pondX - 0.45 + i * 0.2, pondY + 0.011, pondZ - 0.28 + (i % 2) * 0.5);
+    twig.rotation.y = i * 0.8;
+    group.add(twig);
+  }
+  const bubbleMaterial = new THREE.MeshBasicMaterial({ color: 0xc7eef5, transparent: true, opacity: 0.3 });
+  for (let i = 0; i < 14; i++) {
+    const angle = i * 2.1;
+    const r = 0.2 + (i % 5) * 0.11;
+    const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.008 + (i % 3) * 0.004, 6, 4), bubbleMaterial);
+    bubble.position.set(pondX + Math.cos(angle) * r, pondY + 0.012, pondZ + Math.sin(angle) * r);
+    group.add(bubble);
+  }
+
+
   const cloudSeaMaterial = new THREE.ShaderMaterial({
     uniforms: { uTime: sceneUniforms.uTime, uColor: { value: new THREE.Color(0xbfd5e3) } },
     vertexShader: `varying vec2 vUv;
@@ -403,6 +460,20 @@ void main() {
   campfire.group.rotation.y = 0.24;
   campfire.group.scale.setScalar(1.0);
   alpineGroup.add(campfire.group);
+  const fireGlow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.42, 20).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({
+      color: 0xff9b55,
+      transparent: true,
+      opacity: 0.14,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  fireGlow.position.set(1.15, pondY + 0.014, 2.55);
+  fireGlow.scale.set(1.7, 1, 0.8);
+  fireGlow.renderOrder = 4;
+  alpineGroup.add(fireGlow);
 
   // A fallen, snow-covered log and an old stump break the tidy clearing.
   const fallenWood = new THREE.MeshStandardMaterial({ color: 0x6a4d38, roughness: 0.95, flatShading: true });
@@ -682,6 +753,7 @@ void main() {
     }
     if (alpineGroup.visible) {
       campfire.update(time);
+      fireGlow.material.opacity = 0.1 + (Math.sin(time * 5.1) * 0.025 + Math.sin(time * 11.3) * 0.012);
       const sp = Math.max(0, (smallCabinPulseUntil - time) / 1.0);
       smallCabin.light.intensity = 0.8 + sp * sp * 1.0;
       smallCabin.halo.material.opacity = 0.2 + sp * sp * 0.12;
