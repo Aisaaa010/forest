@@ -46,6 +46,9 @@ uniform float uFall;
 uniform float uLength;
 uniform float uGlow;
 uniform float uRain;
+uniform float uFoamStrength;
+uniform float uSoftEdge;
+uniform float uAlpha;
 uniform vec3 uDeep;
 uniform vec3 uShallow;
 uniform vec3 uSky;
@@ -133,13 +136,14 @@ void main() {
     foam = clamp(bank * 0.45 + lines * 0.45 + drop * 0.8, 0.0, 1.0);
     alpha = 0.72 - smoothstep(0.72, 1.0, edge) * 0.4;
   }
-  col = mix(col, uFoam, foam * (uFall > 0.5 ? 0.8 : 0.6));
+  col = mix(col, uFoam, foam * (uFall > 0.5 ? 0.8 : 0.6) * uFoamStrength);
+  alpha *= mix(1.0, 1.0 - smoothstep(0.7, 1.0, edge), uSoftEdge) * uAlpha;
   gl_FragColor = vec4(col, alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
 
-export function createWaterMaterial(timeUniform, { fall = false, speed = 0.35, length = 1 } = {}) {
+export function createWaterMaterial(timeUniform, { fall = false, speed = 0.35, length = 1, foamStrength = 1, softEdge = false, opacity = 1 } = {}) {
   waterUniforms.uTime = timeUniform;
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -147,6 +151,9 @@ export function createWaterMaterial(timeUniform, { fall = false, speed = 0.35, l
       uSpeed: { value: speed },
       uFall: { value: fall ? 1 : 0 },
       uLength: { value: length },
+      uFoamStrength: { value: foamStrength },
+      uSoftEdge: { value: softEdge ? 1 : 0 },
+      uAlpha: { value: opacity },
     },
     vertexShader: waterVertex,
     fragmentShader: waterFragment,

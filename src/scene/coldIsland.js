@@ -12,6 +12,86 @@ import { createGlacierWall } from "./glacier.js";
 const TAU = Math.PI * 2;
 const ALPINE_PALETTE = [0x2f4d43, 0x3d5c4d, 0x4b6a57, 0x5c7864];
 
+// A small procedural ice sheet: snowy grain, branching cracks and trapped
+// bubbles. The same map doubles as a low bump map so the lake stops reading as
+// a flat coloured disc.
+function makeIceTexture() {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#d7e6ec";
+  ctx.fillRect(0, 0, size, size);
+  const rng = (() => {
+    let state = 0x51a7;
+    return () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 4294967296;
+    };
+  })();
+  for (let i = 0; i < 180; i++) {
+    const x = rng() * size;
+    const y = rng() * size;
+    const r = 4 + rng() * 28;
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+    gradient.addColorStop(0, `rgba(235,248,252,${0.04 + rng() * 0.08})`);
+    gradient.addColorStop(1, "rgba(235,248,252,0)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+  }
+  ctx.lineCap = "round";
+  for (let i = 0; i < 14; i++) {
+    let x = rng() * size;
+    let y = rng() * size;
+    ctx.strokeStyle = `rgba(44,83,101,${0.2 + rng() * 0.3})`;
+    ctx.lineWidth = 0.7 + rng() * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    const segments = 3 + Math.floor(rng() * 5);
+    for (let s = 0; s < segments; s++) {
+      x += (rng() - 0.5) * 90;
+      y += (rng() - 0.5) * 90;
+      ctx.lineTo(x, y);
+      if (rng() > 0.55) {
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + (rng() - 0.5) * 55, y + (rng() - 0.5) * 55);
+        ctx.moveTo(x, y);
+      }
+    }
+    ctx.stroke();
+  }
+  for (let i = 0; i < 85; i++) {
+    const x = rng() * size;
+    const y = rng() * size;
+    const r = 1 + rng() * 5;
+    ctx.fillStyle = `rgba(24,67,85,${0.06 + rng() * 0.14})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+  }
+  for (let i = 0; i < 9; i++) {
+    const x = rng() * size;
+    const y = rng() * size;
+    const r = 16 + rng() * 42;
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+    gradient.addColorStop(0, `rgba(243,251,255,${0.18 + rng() * 0.22})`);
+    gradient.addColorStop(1, "rgba(243,251,255,0)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = 4;
+  return texture;
+}
+
 // The second, colder island used by both new scenes. It is built once and kept
 // hidden until the alpine or aurora scene is selected.
 export function buildColdIsland() {
@@ -45,8 +125,8 @@ export function buildColdIsland() {
     { detail: { scale: 14, normalStrength: 0.08 }, ice: 0.85 },
   );
   const snowMaterial = new THREE.MeshStandardMaterial({ color: 0xdfeaf7, roughness: 0.8 });
-  const pondMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0x4f91a8,
+  const pondMaterial = enhanceMaterial(new THREE.MeshPhysicalMaterial({
+    color: 0x427b92,
     roughness: 0.1,
     metalness: 0.06,
     transparent: true,
@@ -54,7 +134,14 @@ export function buildColdIsland() {
     clearcoat: 0.75,
     clearcoatRoughness: 0.12,
     side: THREE.DoubleSide,
+  }), {
+    detail: { scale: 10, normalStrength: 0.16, stretch: [1.4, 1.0, 1] },
   });
+  const iceTexture = makeIceTexture();
+  pondMaterial.map = iceTexture;
+  pondMaterial.bumpMap = iceTexture;
+  pondMaterial.bumpScale = 0.012;
+  pondMaterial.needsUpdate = true;
   const iceFallMaterial = new THREE.MeshPhysicalMaterial({
     color: 0xb7deea,
     roughness: 0.2,
@@ -200,7 +287,7 @@ export function buildColdIsland() {
   }
   const crackGeometry = new THREE.BufferGeometry();
   crackGeometry.setAttribute("position", new THREE.Float32BufferAttribute(crackPositions, 3));
-  const cracks = new THREE.LineSegments(crackGeometry, new THREE.LineBasicMaterial({ color: 0x416f7c, transparent: true, opacity: 0.5 }));
+  const cracks = new THREE.LineSegments(crackGeometry, new THREE.LineBasicMaterial({ color: 0x4f7f90, transparent: true, opacity: 0.72 }));
   group.add(cracks);
 
   // Low pressure ridges and a few frozen reeds soften the lake edge.
@@ -228,16 +315,19 @@ export function buildColdIsland() {
   // Open water: a winding lead in the lake and a short moving channel in the
   // frozen creek. The surrounding ice stays static; only these leads flow.
   const makeColdWater = (curve, width, y, speed) => {
-    const bedRibbon = makeWaterRibbon(curve, 64, () => width + 0.022, () => y - 0.002);
-    const bed = new THREE.Mesh(bedRibbon.geometry, new THREE.MeshBasicMaterial({ color: 0x0c3447 }));
-    bed.renderOrder = 2;
-    group.add(bed);
-    const ribbon = makeWaterRibbon(curve, 64, () => width, () => y);
-    const material = createWaterMaterial(sceneUniforms.uTime, { speed, length: ribbon.length });
-    material.uniforms.uDeep = { value: new THREE.Color(0x0d3448) };
-    material.uniforms.uShallow = { value: new THREE.Color(0x4d9aab) };
-    material.uniforms.uSky = { value: new THREE.Color(0xb8dce8) };
-    material.uniforms.uFoam = { value: new THREE.Color(0xe9fbff) };
+    const widthAt = typeof width === "function" ? width : () => width;
+    const ribbon = makeWaterRibbon(curve, 64, widthAt, () => y);
+    const material = createWaterMaterial(sceneUniforms.uTime, {
+      speed,
+      length: ribbon.length,
+      foamStrength: 0.02,
+      softEdge: true,
+      opacity: 0.94,
+    });
+    material.uniforms.uDeep = { value: new THREE.Color(0x0a2e40) };
+    material.uniforms.uShallow = { value: new THREE.Color(0x3d8597) };
+    material.uniforms.uSky = { value: new THREE.Color(0x9cc8d7) };
+    material.uniforms.uFoam = { value: new THREE.Color(0xd8eef4) };
     material.uniforms.uSunColor = { value: new THREE.Color(0xd8effa) };
     material.uniforms.uSunDir = { value: new THREE.Vector3(-4, 5, 4).normalize() };
     const water = new THREE.Mesh(ribbon.geometry, material);
@@ -252,18 +342,18 @@ export function buildColdIsland() {
       new THREE.Vector3(pondX + 0.22, pondY + 0.009, pondZ + 0.13),
       new THREE.Vector3(pondX + 0.55, pondY + 0.009, pondZ + 0.01),
     ]),
-    0.055,
+    (t) => 0.025 + Math.sin(t * Math.PI) * 0.062 + Math.sin(t * 7.0) * 0.01,
     pondY + 0.009,
     0.18,
   );
   const creekPoints = streamCurve.getPoints(14).slice(3, 10).map((p) => new THREE.Vector3(p.x, 0.203, p.z));
-  makeColdWater(new THREE.CatmullRomCurve3(creekPoints), 0.04, 0.203, 0.25);
+  makeColdWater(new THREE.CatmullRomCurve3(creekPoints), (t) => 0.026 + Math.sin(t * Math.PI) * 0.016, 0.203, 0.25);
 
   // Snow patches and frozen-in twigs break up the ice sheet.
   for (const [x, z, sx, sz] of [[-0.34, -0.1, 0.3, 0.18], [0.38, 0.16, 0.24, 0.16], [0.0, -0.34, 0.2, 0.12]]) {
-    const patch = new THREE.Mesh(new THREE.SphereGeometry(0.25, 9, 6), snowMaterial);
+    const patch = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25, 0), snowMaterial);
     patch.position.set(pondX + x, pondY + 0.007, pondZ + z);
-    patch.scale.set(sx, 0.025, sz);
+    patch.scale.set(sx, 0.018, sz);
     patch.rotation.y = x * 3;
     group.add(patch);
   }
