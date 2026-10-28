@@ -38,6 +38,16 @@ const state = reactive({
 });
 useForestPreferences(state);
 const scene = computed(() => scenes[state.scene]);
+const sceneEntries = computed(() =>
+  Object.entries(scenes).map(([key, item], index) => ({
+    key,
+    title: item.title,
+    number: String(index + 1).padStart(2, "0"),
+  })),
+);
+const currentSceneNumber = computed(
+  () => String(Object.keys(scenes).indexOf(state.scene) + 1).padStart(2, "0"),
+);
 const observationPrompts = {
   morning: [
     "找一束穿过薄雾的光，跟着它慢慢看一会儿。",
@@ -113,6 +123,7 @@ const immersed = ref(false),
   journalOpen = ref(false),
   aboutOpen = ref(false);
 const settingsOpen = ref(false);
+const sceneMenuOpen = ref(false);
 const sceneIcons = { morning: "sun", rain: "rain", night: "moon", snow: "snow", alpine: "cabin", aurora: "aurora" };
 const toastMessage = ref(""),
   toastVisible = ref(false);
@@ -207,6 +218,7 @@ const {
 function selectScene(name, saved) {
   const selected = scenes[name];
   if (!selected) return;
+  sceneMenuOpen.value = false;
   state.scene = name;
   state.phase = saved?.phase || selected.phase;
   state.weather = saved?.weather || selected.weather;
@@ -407,9 +419,15 @@ const sessionTime = computed(() => {
 });
 let sessionTimer;
 function handleEscape(event) {
-  if (event.key === "Escape" && immersed.value) immersed.value = false;
+  if (event.key !== "Escape") return;
+  if (sceneMenuOpen.value) {
+    sceneMenuOpen.value = false;
+    return;
+  }
+  if (immersed.value) immersed.value = false;
 }
 watch(immersed, async (value) => {
+  if (value) sceneMenuOpen.value = false;
   document.body.style.overflow = value ? "hidden" : "";
   await nextTick();
   (value ? leaveImmersiveButton.value : immersiveButton.value)?.focus();
@@ -504,22 +522,51 @@ onUnmounted(() => {
         <button id="observation-toggle" title="静心观察" aria-label="静心观察" @click="openObservation"><ForestIcon name="eye" /></button>
       </aside>
 
+      <div v-if="sceneMenuOpen" class="island-scene-scrim" @click="sceneMenuOpen = false"></div>
       <div class="island-bottom island-chrome" :inert="immersed">
-        <nav class="island-scene-switcher" aria-label="切换岛屿场景">
-          <button v-for="(item, key, index) in scenes" :key="key" :data-scene="key" :class="{ selected: state.scene === key }" :aria-pressed="state.scene === key" @click="selectScene(key)">
-            <ForestIcon :name="sceneIcons[key]" />
-            <span>{{ item.title }}</span>
-            <small>{{ String(index + 1).padStart(2, '0') }}</small>
+        <div class="island-scene-control">
+          <button
+            class="island-scene-trigger"
+            type="button"
+            aria-haspopup="listbox"
+            aria-controls="island-scene-menu"
+            :aria-expanded="sceneMenuOpen"
+            @click="sceneMenuOpen = !sceneMenuOpen"
+          >
+            <span class="island-scene-icon"><ForestIcon :name="sceneIcons[state.scene]" /></span>
+            <span class="island-scene-copy">
+              <small>风景 {{ currentSceneNumber }} / 06</small>
+              <strong>{{ scene.title }}</strong>
+            </span>
+            <span class="island-scene-chevron" aria-hidden="true"></span>
           </button>
-        </nav>
+          <Transition name="island-scene-menu">
+            <div v-if="sceneMenuOpen" id="island-scene-menu" class="island-scene-menu" role="listbox" aria-label="选择风景">
+              <button
+                v-for="item in sceneEntries"
+                :key="item.key"
+                type="button"
+                role="option"
+                :data-scene="item.key"
+                :class="{ selected: state.scene === item.key }"
+                :aria-selected="state.scene === item.key"
+                @click="selectScene(item.key)"
+              >
+                <ForestIcon :name="sceneIcons[item.key]" />
+                <span>{{ item.title }}</span>
+                <small>{{ item.number }}</small>
+              </button>
+            </div>
+          </Transition>
+        </div>
         <div class="island-bottom-tools">
           <button id="sound-toggle" class="island-play" :class="{ active: state.playing }" :aria-label="state.playing ? '暂停自然声音' : '播放自然声音'" :aria-pressed="state.playing" @click="toggleAudio"><ForestIcon :name="state.playing ? 'pause' : 'play'" /><span>{{ state.playing ? '正在听见森林' : '听见森林' }}</span><span class="sound-bars" aria-hidden="true"><i v-for="n in 5" :key="n"></i></span></button>
           <button id="atmosphere-toggle" aria-haspopup="dialog" aria-controls="island-settings" @click="settingsOpen = true"><ForestIcon name="wind" /><span>氛围与声音</span></button>
           <button id="immersive" ref="immersiveButton" @click="immersed = true"><ForestIcon name="expand" /><span>沉浸</span></button>
         </div>
       </div>
-      <p v-if="!focused" class="island-gesture-hint island-chrome" :inert="immersed">拖动环绕 · 右键拖动平移 · 滚轮朝光标缩放<br /><span>{{ interactionHint }} · 单击互动，双击细看 · Esc 返回</span></p>
-      <div v-if="!focused" class="island-session island-chrome" :inert="immersed"><span>在岛上停留</span><strong id="session-time">{{ sessionTime }}</strong><small v-if="focusRunning">专注 {{ focusTimeLabel }}</small><small v-if="sleepRunning">声音将在 {{ sleepTimeLabel }} 后停止</small></div>
+      <p v-if="!focused && !sceneMenuOpen" class="island-gesture-hint island-chrome" :inert="immersed">拖动环绕 · 右键拖动平移 · 滚轮朝光标缩放<br /><span>{{ interactionHint }} · 单击互动，双击细看 · Esc 返回</span></p>
+      <div v-if="!focused && !sceneMenuOpen" class="island-session island-chrome" :inert="immersed"><span>在岛上停留</span><strong id="session-time">{{ sessionTime }}</strong><small v-if="focusRunning">专注 {{ focusTimeLabel }}</small><small v-if="sleepRunning">声音将在 {{ sleepTimeLabel }} 后停止</small></div>
       <button v-show="immersed" id="leave-immersive" ref="leaveImmersiveButton" class="island-exit" @click="immersed = false"><ForestIcon name="close" />显示控件</button>
     </main>
 

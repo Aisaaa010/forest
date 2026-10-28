@@ -111,36 +111,89 @@ body { overflow: hidden; overscroll-behavior: none; }
   left: 50%;
   bottom: max(28px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  width: min(568px, calc(100% - 40px));
+  width: min(460px, calc(100% - 40px));
   pointer-events: none;
 }
-.island-scene-switcher {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
-  padding: 7px;
-  border-radius: 21px;
-  background: #f2f5e9e8;
+.island-scene-control { position: relative; pointer-events: auto; }
+.island-scene-trigger {
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 15px 9px 11px;
+  border-radius: 18px;
   border: 1px solid #fff9;
-  box-shadow: 0 12px 48px #173d2926, inset 0 1px 0 #fff8;
+  color: #4e6347;
+  background: #f2f5e9e8;
+  box-shadow: 0 12px 42px #173d2926, inset 0 1px 0 #fff8;
   backdrop-filter: blur(20px);
-  pointer-events: auto;
-  color: #73816b;
+  text-align: left;
+  transition: background 220ms ease, box-shadow 220ms ease;
 }
-.island-scene-switcher button {
+.island-scene-trigger:hover { background: #f8faef; box-shadow: 0 14px 46px #173d292e, inset 0 1px 0 #fff; }
+.island-scene-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: #57724d;
+  background: #dfe8d4;
+}
+.island-scene-icon svg { width: 21px; height: 21px; stroke-width: 1.4; }
+.island-scene-copy { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.island-scene-copy small { font-size: 8px; letter-spacing: 1.5px; opacity: .5; }
+.island-scene-copy strong { overflow: hidden; font: 500 17px/1.25 var(--serif); letter-spacing: 1.5px; text-overflow: ellipsis; white-space: nowrap; }
+.island-scene-chevron {
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-right: 1px solid #6d8062;
+  border-bottom: 1px solid #6d8062;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 220ms ease;
+}
+.island-scene-trigger[aria-expanded="true"] .island-scene-chevron { transform: rotate(225deg) translate(-1px, -1px); }
+.island-scene-menu {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 9px);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid #fff9;
+  border-radius: 17px;
+  background: #f4f7ecf2;
+  box-shadow: 0 18px 54px #122b1e3d, inset 0 1px 0 #fff;
+  backdrop-filter: blur(22px);
+  transform-origin: 50% 100%;
+  pointer-events: auto;
+}
+.island-scene-menu button {
   position: relative;
   display: grid;
-  justify-items: center;
-  gap: 8px;
-  padding: 13px 8px 12px;
-  border-radius: 14px;
-  font-size: 12px;
-  white-space: nowrap;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 9px;
+  border-radius: 11px;
+  color: #6d7c65;
+  text-align: left;
+  font-size: 10px;
+  transition: background .2s ease, color .2s ease;
 }
-.island-scene-switcher button > svg { width: 21px; height: 21px; stroke-width: 1.4; }
-.island-scene-switcher button > small { position: absolute; top: 9px; right: 10px; font: 9px Georgia, serif; opacity: .4; }
-.island-scene-switcher button:hover { background: #e2e9d9; color: #3f603e; }
-.island-scene-switcher button.selected { background: #dde7ce; color: #3e5b35; box-shadow: inset 0 0 0 1px #cbd8b9; }
+.island-scene-menu button:hover { color: #3f603e; background: #e4ebd9; }
+.island-scene-menu button.selected { color: #3e5b35; background: #dce6cf; box-shadow: inset 0 0 0 1px #cbd8b9; }
+.island-scene-menu button > svg { width: 17px; height: 17px; stroke-width: 1.4; }
+.island-scene-menu button > small { position: absolute; top: 7px; right: 7px; font: 8px Georgia, serif; opacity: .35; }
+.island-scene-scrim { position: fixed; inset: 0; z-index: 3; background: transparent; }
+.island-scene-menu-enter-active, .island-scene-menu-leave-active { transition: opacity .2s ease, transform .2s ease; }
+.island-scene-menu-enter-from, .island-scene-menu-leave-to { opacity: 0; transform: translateY(7px) scale(.98); }
 .island-bottom-tools { display: flex; justify-content: center; align-items: center; gap: 9px; margin-top: 14px; pointer-events: auto; }
 .island-bottom-tools > button {
   min-height: 39px;
@@ -226,10 +279,10 @@ body { overflow: hidden; overscroll-behavior: none; }
   .island-actions button { width: 35px; height: 35px; }
   .island-actions svg { width: 16px; height: 16px; }
   .island-bottom { width: calc(100% - 28px); bottom: max(20px, env(safe-area-inset-bottom)); }
-  .island-scene-switcher { gap: 3px; padding: 5px; border-radius: 18px; }
-  .island-scene-switcher button { gap: 7px; padding: 12px 4px 10px; font-size: 11px; border-radius: 12px; }
-  .island-scene-switcher button > small { top: 6px; right: 6px; font-size: 8px; }
-  .island-scene-switcher button > svg { width: 20px; height: 20px; }
+  .island-scene-trigger { min-height: 54px; padding: 7px 12px 7px 9px; border-radius: 16px; }
+  .island-scene-icon { width: 34px; height: 34px; border-radius: 10px; }
+  .island-scene-copy strong { font-size: 15px; }
+  .island-scene-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: min(420px, calc(100dvh - 280px)); overflow-y: auto; }
   .island-bottom-tools { margin-top: 11px; gap: 7px; }
   .island-bottom-tools > button { gap: 6px; padding: 8px 11px; font-size: 10px; min-height: 35px; }
   .island-bottom-tools .sound-bars { display: none; }
@@ -252,7 +305,6 @@ body { overflow: hidden; overscroll-behavior: none; }
   .island-story h1 { font-size: 30px; }
   .island-story #scene-description { max-width: 170px; font-size: 10px; }
   .island-bottom { width: 450px; bottom: 16px; }
-  .island-scene-switcher button { padding: 7px; gap: 3px; }
   .island-bottom-tools { margin-top: 8px; }
   .island-gesture-hint { display: none; }
   .island-session { bottom: 20px; }
@@ -261,11 +313,8 @@ body { overflow: hidden; overscroll-behavior: none; }
   .island-chrome { transition: none; }
 }
 
-/* Six-scene switcher and the alpine time toggle. */
-.island-bottom { width: min(760px, calc(100% - 40px)); }
-.island-scene-switcher { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.island-scene-switcher button { padding: 12px 5px 10px; font-size: 11px; }
-.island-scene-switcher button > svg { width: 20px; height: 20px; }
+/* Compact single-button scene picker and the alpine time toggle. */
+.island-bottom { width: min(460px, calc(100% - 40px)); }
 .island-time-switch {
   display: flex;
   width: max-content;
@@ -289,23 +338,18 @@ body { overflow: hidden; overscroll-behavior: none; }
 .island-time-switch button.selected { background: #ffffff1f !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; opacity: 1; font-weight: 600; box-shadow: inset 0 0 0 1px #ffffff70; }
 .island-time-switch button:disabled { opacity: 0.35; cursor: not-allowed; }
 @media (max-width: 900px) {
-  .island-bottom { width: min(620px, calc(100% - 30px)); }
-  .island-scene-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .island-bottom { width: min(440px, calc(100% - 30px)); }
   .island-gesture-hint { bottom: 226px; }
   .island-session { bottom: 226px; }
 }
 @media (max-width: 700px) {
   .island-bottom { width: calc(100% - 28px); }
-  .island-scene-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .island-scene-switcher button { padding: 10px 4px 8px; gap: 6px; font-size: 10px; }
   .island-gesture-hint { bottom: 232px; }
   .island-session { bottom: 232px; }
   .island-time-switch { margin-top: 10px; }
 }
 @media (max-height: 520px) and (min-width: 681px) {
-  .island-bottom { width: 620px; }
-  .island-scene-switcher button { padding: 6px 3px; font-size: 10px; }
-  .island-scene-switcher button > svg { width: 17px; height: 17px; }
+  .island-bottom { width: 440px; }
   .island-gesture-hint { display: none; }
   .island-session { bottom: 20px; }
 }
