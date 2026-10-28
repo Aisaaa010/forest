@@ -13,6 +13,7 @@ import { createSkyEnvironment } from "../scene/environment.js";
 import { buildContactShadows } from "../scene/grounding.js";
 import { buildUnderstory } from "../scene/understory.js";
 import { buildColdIsland } from "../scene/coldIsland.js";
+import { createColdSky } from "../scene/coldSky.js";
 import { createIslandTerrain, makeBoulderGeometry, makeIsletGeometry, rimPoint } from "../scene/terrain.js";
 import { scenes } from "../data/forest.js";
 import { ALPINE_MOODS, POLAR_MOOD } from "../scene/coldMood.js";
@@ -89,6 +90,8 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     renderer.setClearColor(0x000000, 0);
 
     const scene = new THREE.Scene();
+    const sky = createColdSky();
+    scene.add(sky.mesh);
     const environment = createSkyEnvironment(renderer);
     scene.environment = environment;
     scene.environmentIntensity = 0.45;
@@ -748,7 +751,7 @@ void main() {
     let cold = null;
     function ensureColdIsland() {
       if (cold) return cold;
-      cold = buildColdIsland();
+      cold = buildColdIsland({ skyUniforms: sky.uniforms });
       cold.group.visible = false;
       coldHost.add(cold.group);
       return cold;
@@ -1266,6 +1269,7 @@ void main() {
       const rainy = state.weather === "rain";
       const snowing = state.weather === "snow";
       const misty = state.weather === "mist";
+      sky.setTheme(state.scene, state.phase, state.weather);
       const palette = TREE_PALETTES[snowing ? "snow" : rainy ? "rain" : night ? "night" : state.scene] || TREE_PALETTES.morning;
       moodTargets = [];
       const color = (object, property, value) => moodTargets.push({ object, property, value: new THREE.Color(value) });
@@ -1320,6 +1324,11 @@ void main() {
       number(understory.fernMaterial, "roughness", rainy ? 0.45 : 0.72);
       color(understory.litterMaterial, "color", night ? 0x6a5d4c : rainy ? 0x9a907c : 0xffffff);
       number(sceneUniforms.uSnow, "value", snowing ? 1 : 0);
+      if (!snowing && state.scene !== "alpine" && state.scene !== "aurora") {
+        // Leaving a cold/snow scene should not leave pale snow on forest trees
+        // while the ground transition catches up.
+        sceneUniforms.uSnow.value = 0;
+      }
       number(ambientLight, "intensity", night ? 0.32 : rainy ? 0.7 : snowing ? 0.9 : afternoon ? 0.95 : 0.9);
       color(ambientLight, "color", night ? 0x7d9db4 : rainy ? 0xc4d0d5 : snowing ? 0xe7f1f6 : 0xeaf4da);
       number(sunlight, "intensity", night ? 0.48 : rainy ? 1.15 : afternoon ? 3.2 : snowing ? 1.9 : 3.0);
@@ -1889,6 +1898,7 @@ void main() {
       lastFrame = now;
       const timeStep = reducedMotion.matches ? 0 : delta;
       sceneUniforms.uTime.value += timeStep;
+      sky.uniforms.uTime.value = sceneUniforms.uTime.value;
       let moving = false;
       const blend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 6);
       const moodBlend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 2.2);

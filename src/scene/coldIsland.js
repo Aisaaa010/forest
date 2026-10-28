@@ -8,7 +8,7 @@ import { makeWaterRibbon, createWaterMaterial } from "./water.js";
 import { createAlpineCabin, createSmallCabin, createCampfire, createPolarHut } from "./cabin.js";
 import { createAurora } from "./aurora.js";
 import { createGlacierWall } from "./glacier.js";
-import { COLD_SKY_GLSL, createColdSky } from "./coldSky.js";
+import { COLD_SKY_GLSL, createColdSkyUniforms } from "./coldSky.js";
 
 const TAU = Math.PI * 2;
 const ALPINE_PALETTE = [0x2f4d43, 0x3d5c4d, 0x4b6a57, 0x5c7864];
@@ -95,13 +95,11 @@ function makeIceTexture() {
 
 // The second, colder island used by both new scenes. It is built once and kept
 // hidden until the alpine or aurora scene is selected.
-export function buildColdIsland() {
+export function buildColdIsland({ skyUniforms = null } = {}) {
   const group = new THREE.Group();
   group.name = "cold island";
   group.scale.set(1.06, 1.0, 0.96);
-
-  const coldSky = createColdSky();
-  group.add(coldSky.mesh);
+  const sharedSkyUniforms = skyUniforms || createColdSkyUniforms();
 
   const streamCurve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(-2.5, 0.2, -3.0),
@@ -255,7 +253,7 @@ export function buildColdIsland() {
   // The frozen surface reflects the same procedural sky as the dome: stars,
   // horizon glow and the aurora airglow all land on the ice.
   const iceSkyMaterial = new THREE.ShaderMaterial({
-    uniforms: { ...coldSky.uniforms },
+    uniforms: { ...sharedSkyUniforms },
     vertexShader: `varying vec3 vWorld;
 varying vec2 vUv;
 void main() {
@@ -276,6 +274,7 @@ void main() {
   float fresnel = pow(1.0 - max(dot(-V, N), 0.0), 3.0);
   float edge = smoothstep(0.0, 0.2, vUv.x) * smoothstep(0.0, 0.16, vUv.y);
   gl_FragColor = vec4(reflected, (0.035 + fresnel * 0.34) * edge);
+  #include <colorspace_fragment>
 }`,
     transparent: true,
     depthWrite: false,
@@ -874,7 +873,6 @@ void main() {
   function setMode(mode, phase, mood) {
     const alpine = mode === "alpine";
     const polar = mode === "aurora";
-    coldSky.setMode(mode, phase);
     forestLife.visible = alpine;
     alpineGroup.visible = alpine;
     polarGroup.visible = polar;
@@ -937,7 +935,6 @@ void main() {
   }
 
   function update(time) {
-    coldSky.uniforms.uTime.value = time;
     snowGlitter.material.uniforms.uTime.value = time;
     if (aurora.group.visible) aurora.update(time);
     if (forestLife.visible) {

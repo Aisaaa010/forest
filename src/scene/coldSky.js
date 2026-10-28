@@ -7,8 +7,13 @@ export const COLD_SKY_GLSL = /* glsl */ `
 uniform float uTime;
 uniform float uPolar;
 uniform float uStars;
+uniform float uMilky;
 uniform float uAurora;
 uniform float uWarm;
+uniform float uOvercast;
+uniform float uSunGlow;
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
 uniform vec3 uZenith;
 uniform vec3 uMid;
 uniform vec3 uHorizon;
@@ -90,6 +95,18 @@ vec3 coldSkyColor(vec3 dir) {
   vec3 col = mix(uHorizon, uMid, smoothstep(0.0, 0.32, e));
   col = mix(col, uZenith, smoothstep(0.28, 1.1, e));
 
+  // Cloud deck: thin dawn wisps, a heavy rain ceiling, pale snow cloud, or a
+  // dark polar sky depending on the theme uniforms.
+  float cloudField = skyFbm(vec2(az * 1.7 + uTime * 0.004, el * 5.0));
+  float cloudDetail = skyFbm(vec2(az * 4.2, el * 7.0 + cloudField * 2.0) + uTime * 0.006);
+  float cloudMask = smoothstep(0.34, 0.68, cloudField * 0.7 + cloudDetail * 0.3)
+                  * smoothstep(-0.03, 0.14, el) * (1.0 - smoothstep(0.55, 0.95, el));
+  vec3 cloudColor = mix(uMid, uHorizon, 0.62) + uWarm * vec3(0.06, 0.035, 0.02);
+  col = mix(col, cloudColor, cloudMask * uOvercast * 0.72);
+
+  float sun = max(dot(dir, normalize(uSunDir)), 0.0);
+  col += uSunColor * (pow(sun, 320.0) * 2.6 + pow(sun, 24.0) * 0.12) * uSunGlow;
+
   // A low, soft aurora airglow. The sculpted curtains are separate meshes so
   // they keep parallax, but the sky still carries their colour.
   float glowBand = exp(-pow((el - 0.28) / 0.25, 2.0));
@@ -102,7 +119,7 @@ vec3 coldSkyColor(vec3 dir) {
   vec3 mw = normalize(vec3(0.4, 0.75, -0.35));
   float band = exp(-pow(dot(dir, mw), 2.0) * 18.0);
   float dust = skyFbm(dir.xz * 5.0 + dir.y * 3.0 + 4.0);
-  col += band * (0.15 + dust * 0.85) * vec3(0.22, 0.3, 0.56) * 0.18 * uStars * uPolar;
+  col += band * (0.15 + dust * 0.85) * vec3(0.22, 0.3, 0.56) * 0.18 * uStars * uMilky;
 
   float star = skyStars(dir, 150.0, 0.985) * 1.45
              + skyStars(dir, 340.0, 0.965) * 0.66
@@ -149,8 +166,13 @@ export function createColdSkyUniforms() {
     uTime: { value: 0 },
     uPolar: { value: 1 },
     uStars: { value: 1 },
+    uMilky: { value: 1 },
     uAurora: { value: 1 },
     uWarm: { value: 0 },
+    uOvercast: { value: 0.18 },
+    uSunGlow: { value: 0 },
+    uSunDir: { value: new THREE.Vector3(-0.45, 0.35, -0.82).normalize() },
+    uSunColor: { value: new THREE.Color(0xffe2b0) },
     uZenith: { value: new THREE.Color(0x01040d) },
     uMid: { value: new THREE.Color(0x041424) },
     uHorizon: { value: new THREE.Color(0x0c2630) },
@@ -173,6 +195,7 @@ void main() {
 varying vec3 vDir;
 void main() {
   gl_FragColor = vec4(coldSkyColor(normalize(vDir)), 1.0);
+  #include <colorspace_fragment>
 }`,
     side: THREE.BackSide,
     depthWrite: false,
@@ -186,31 +209,66 @@ void main() {
   return {
     mesh,
     uniforms,
-    setMode(mode, phase) {
-      const polar = mode === "aurora";
+    setTheme(scene, phase, weather) {
+      const polar = scene === "aurora";
       const morning = phase === "morning";
+      const afternoon = phase === "afternoon";
       const night = phase === "night";
+      const rainy = weather === "rain" || scene === "rain";
+      const snowy = weather === "snow" || scene === "snow";
+      const alpine = scene === "alpine";
       uniforms.uPolar.value = polar ? 1 : 0;
-      uniforms.uStars.value = polar ? 1 : night ? 0.55 : morning ? 0.12 : 0.05;
       uniforms.uAurora.value = polar ? 1 : 0;
-      uniforms.uWarm.value = polar ? 0 : phase === "afternoon" ? 0.9 : 0.12;
+      uniforms.uMilky.value = polar ? 1 : night && scene === "night" ? 0.55 : 0;
+      uniforms.uStars.value = polar ? 1 : scene === "night" ? 0.9 : alpine && night ? 0.55 : morning ? 0.05 : 0;
+      uniforms.uWarm.value = polar ? 0 : alpine && afternoon ? 0.9 : morning ? 0.25 : 0;
+      uniforms.uOvercast.value = rainy ? 0.95 : snowy ? 0.88 : night ? 0.24 : morning ? 0.3 : 0.18;
+      uniforms.uSunGlow.value = rainy || snowy || polar ? 0 : night ? 0.2 : morning ? 0.8 : alpine && afternoon ? 0.85 : 0.12;
+      uniforms.uSunColor.value.setHex(night ? 0xbdd8ff : 0xffe0b2);
+      uniforms.uSunDir.value.set(night ? -0.5 : -0.35, night ? 0.42 : 0.28, night ? -0.7 : -0.88).normalize();
+      uniforms.uAuroraLow.value.setHex(0x4bffd6);
+      uniforms.uAuroraMid.value.setHex(0x2fe7a4);
+      uniforms.uAuroraHigh.value.setHex(0x7c8dff);
       if (polar) {
         uniforms.uZenith.value.setHex(0x01040d);
         uniforms.uMid.value.setHex(0x031226);
         uniforms.uHorizon.value.setHex(0x071d27);
-      } else if (morning) {
-        uniforms.uZenith.value.setHex(0x020b1a);
-        uniforms.uMid.value.setHex(0x09213a);
-        uniforms.uHorizon.value.setHex(0x284b5b);
-      } else if (night) {
-        uniforms.uZenith.value.setHex(0x020814);
-        uniforms.uMid.value.setHex(0x061727);
-        uniforms.uHorizon.value.setHex(0x142d38);
+      } else if (alpine) {
+        if (morning) {
+          uniforms.uZenith.value.setHex(0x020b1a);
+          uniforms.uMid.value.setHex(0x09213a);
+          uniforms.uHorizon.value.setHex(0x284b5b);
+        } else if (night) {
+          uniforms.uZenith.value.setHex(0x020814);
+          uniforms.uMid.value.setHex(0x061727);
+          uniforms.uHorizon.value.setHex(0x142d38);
+        } else {
+          uniforms.uZenith.value.setHex(0x061a32);
+          uniforms.uMid.value.setHex(0x123552);
+          uniforms.uHorizon.value.setHex(0x3d5662);
+        }
+      } else if (rainy) {
+        uniforms.uZenith.value.setHex(0x425966);
+        uniforms.uMid.value.setHex(0x6e8590);
+        uniforms.uHorizon.value.setHex(0xa1b0b5);
+        uniforms.uSunGlow.value = 0;
+      } else if (snowy) {
+        uniforms.uZenith.value.setHex(0x687d88);
+        uniforms.uMid.value.setHex(0x97aab4);
+        uniforms.uHorizon.value.setHex(0xc6d3da);
+        uniforms.uSunGlow.value = 0;
+      } else if (night || scene === "night") {
+        uniforms.uZenith.value.setHex(0x010712);
+        uniforms.uMid.value.setHex(0x051a24);
+        uniforms.uHorizon.value.setHex(0x0a2a33);
       } else {
-        uniforms.uZenith.value.setHex(0x061a32);
-        uniforms.uMid.value.setHex(0x123552);
-        uniforms.uHorizon.value.setHex(0x3d5662);
+        uniforms.uZenith.value.setHex(0x6b94ab);
+        uniforms.uMid.value.setHex(0xaec4c8);
+        uniforms.uHorizon.value.setHex(0xf1ddc0);
       }
+    },
+    setMode(mode, phase) {
+      this.setTheme(mode, phase, "snow");
     },
   };
 }
