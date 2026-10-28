@@ -8,6 +8,7 @@ void main() {
 
 const AURORA_FRAGMENT = `uniform float uTime;
 uniform vec3 uLow;
+uniform vec3 uMid;
 uniform vec3 uHigh;
 uniform float uOpacity;
 varying vec2 vUv;
@@ -36,17 +37,20 @@ void main() {
   float bottomFade = 1.0 - smoothstep(0.62, 1.0, vUv.y);
   float edgeFade = smoothstep(0.0, 0.08, vUv.x) * (1.0 - smoothstep(0.92, 1.0, vUv.x));
   float alpha = curtain * topFade * bottomFade * edgeFade * uOpacity;
-  vec3 color = mix(uLow, uHigh, smoothstep(0.25, 0.9, vUv.y) * 0.75 + rays * 0.25);
-  color += uHigh * smoothstep(0.72, 1.0, vUv.y) * 0.12;
+  // Cool hem -> green body -> violet crown. Deliberately no pink fringe.
+  vec3 color = mix(uLow, uMid, smoothstep(0.02, 0.48, vUv.y));
+  color = mix(color, uHigh, smoothstep(0.46, 1.0, vUv.y));
+  color += uHigh * smoothstep(0.78, 1.0, vUv.y) * 0.08;
   gl_FragColor = vec4(color, alpha);
 }`;
 
-function createCurtain({ radius, height, y, low, high, opacity, rotation = 0, thetaStart = -Math.PI * 0.8, thetaLength = Math.PI * 1.6 }) {
+function createCurtain({ radius, height, y, low, mid, high, opacity, rotation = 0, thetaStart = -Math.PI * 0.8, thetaLength = Math.PI * 1.6 }) {
   const geometry = new THREE.CylinderGeometry(radius, radius, height, 72, 1, true, thetaStart, thetaLength);
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
       uLow: { value: new THREE.Color(low) },
+      uMid: { value: new THREE.Color(mid) },
       uHigh: { value: new THREE.Color(high) },
       uOpacity: { value: opacity },
     },
@@ -88,7 +92,7 @@ attribute float aSeed;
 varying float vAlpha;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = (0.8 + fract(aSeed * 17.3) * 1.8) * (42.0 / -mv.z);
+  gl_PointSize = (1.2 + fract(aSeed * 17.3) * 2.2) * (82.0 / -mv.z);
   gl_Position = projectionMatrix * mv;
   vAlpha = 0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * (0.6 + aSeed * 1.5) + aSeed * 31.0));
 }`,
@@ -113,12 +117,12 @@ export function createAurora() {
   const group = new THREE.Group();
   group.name = "aurora sky";
   const layers = [
-    createCurtain({ radius: 7.4, height: 5.6, y: 3.6, low: 0x2ff5a8, high: 0x5bdcff, opacity: 0.5, rotation: 0.1 }),
-    createCurtain({ radius: 8.6, height: 4.8, y: 4.0, low: 0x28d9b0, high: 0xa98cff, opacity: 0.34, rotation: 1.1 }),
-    createCurtain({ radius: 9.6, height: 3.8, y: 4.5, low: 0x2ff5a8, high: 0xb79cff, opacity: 0.24, rotation: -0.7, thetaStart: -Math.PI * 0.45, thetaLength: Math.PI * 0.9 }),
+    createCurtain({ radius: 7.4, height: 5.6, y: 3.6, low: 0x8fffe6, mid: 0x35eda9, high: 0x5b9dff, opacity: 0.12, rotation: 0.1 }),
+    createCurtain({ radius: 8.6, height: 4.8, y: 4.0, low: 0x79ffe0, mid: 0x2ee3a7, high: 0x9b8cff, opacity: 0.08, rotation: 1.1 }),
+    createCurtain({ radius: 9.6, height: 3.8, y: 4.5, low: 0x9affeb, mid: 0x47f7b7, high: 0x7c82ff, opacity: 0.05, rotation: -0.7, thetaStart: -Math.PI * 0.45, thetaLength: Math.PI * 0.9 }),
   ];
   group.add(...layers);
-  const stars = createStars();
+  const stars = createStars(320);
   group.add(stars);
   const moon = new THREE.Mesh(
     new THREE.CircleGeometry(0.36, 24),
@@ -137,6 +141,12 @@ export function createAurora() {
   const auroraLight = new THREE.PointLight(0x5de0c0, 0.9, 18);
   auroraLight.position.set(0, 4.0, 0);
   group.add(auroraLight);
+  const auroraRim = new THREE.DirectionalLight(0x52ffc2, 0.55);
+  auroraRim.position.set(0, 7, -7);
+  group.add(auroraRim);
+  const auroraViolet = new THREE.DirectionalLight(0x8598ff, 0.16);
+  auroraViolet.position.set(-6, 4, -8);
+  group.add(auroraViolet);
   for (const layer of layers) layer.userData.baseOpacity = layer.material.uniforms.uOpacity.value;
   let pulseUntil = 0;
 
@@ -147,12 +157,15 @@ export function createAurora() {
   function update(time) {
     const pulse = Math.max(0, (pulseUntil - performance.now()) / 1300);
     const eased = pulse * pulse;
+    const slowSurge = 0.72 + 0.2 * Math.sin(time * 0.045) + 0.08 * Math.sin(time * 0.11 + 1.3);
     for (const layer of layers) {
       layer.material.uniforms.uTime.value = time;
-      layer.material.uniforms.uOpacity.value = layer.userData.baseOpacity * (1 + eased * 0.75);
+      layer.material.uniforms.uOpacity.value = layer.userData.baseOpacity * slowSurge * (1 + eased * 0.75);
     }
+    auroraLight.intensity = 0.72 + slowSurge * 0.42 + eased * 1.8;
+    auroraRim.intensity = 0.3 + slowSurge * 0.62 + eased * 0.8;
+    auroraViolet.intensity = 0.1 + slowSurge * 0.16 + eased * 0.25;
     stars.material.uniforms.uTime.value = time;
-    auroraLight.intensity = 0.9 + eased * 1.8;
     group.rotation.y = Math.sin(time * 0.01) * 0.06;
   }
 

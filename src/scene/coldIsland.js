@@ -8,6 +8,7 @@ import { makeWaterRibbon, createWaterMaterial } from "./water.js";
 import { createAlpineCabin, createSmallCabin, createCampfire, createPolarHut } from "./cabin.js";
 import { createAurora } from "./aurora.js";
 import { createGlacierWall } from "./glacier.js";
+import { COLD_SKY_GLSL, createColdSky } from "./coldSky.js";
 
 const TAU = Math.PI * 2;
 const ALPINE_PALETTE = [0x2f4d43, 0x3d5c4d, 0x4b6a57, 0x5c7864];
@@ -98,6 +99,9 @@ export function buildColdIsland() {
   const group = new THREE.Group();
   group.name = "cold island";
   group.scale.set(1.06, 1.0, 0.96);
+
+  const coldSky = createColdSky();
+  group.add(coldSky.mesh);
 
   const streamCurve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(-2.5, 0.2, -3.0),
@@ -248,6 +252,42 @@ export function buildColdIsland() {
   pond.renderOrder = 1;
   group.add(pond);
 
+  // The frozen surface reflects the same procedural sky as the dome: stars,
+  // horizon glow and the aurora airglow all land on the ice.
+  const iceSkyMaterial = new THREE.ShaderMaterial({
+    uniforms: { ...coldSky.uniforms },
+    vertexShader: `varying vec3 vWorld;
+varying vec2 vUv;
+void main() {
+  vec4 world = modelMatrix * vec4(position, 1.0);
+  vWorld = world.xyz;
+  vUv = uv;
+  gl_Position = projectionMatrix * viewMatrix * world;
+}`,
+    fragmentShader: `${COLD_SKY_GLSL}
+varying vec3 vWorld;
+varying vec2 vUv;
+void main() {
+  vec3 V = normalize(vWorld - cameraPosition);
+  float n1 = skyNoise(vWorld.xz * 2.1);
+  float n2 = skyNoise(vWorld.xz * 2.1 + 7.3);
+  vec3 N = normalize(vec3((n1 - 0.5) * 0.1, 1.0, (n2 - 0.5) * 0.1));
+  vec3 reflected = coldSkyColor(reflect(V, N));
+  float fresnel = pow(1.0 - max(dot(-V, N), 0.0), 3.0);
+  float edge = smoothstep(0.0, 0.2, vUv.x) * smoothstep(0.0, 0.16, vUv.y);
+  gl_FragColor = vec4(reflected, (0.035 + fresnel * 0.34) * edge);
+}`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+  const iceSky = new THREE.Mesh(lakeGeometry.clone(), iceSkyMaterial);
+  iceSky.position.set(pondX, pondY + 0.008, pondZ);
+  iceSky.renderOrder = 2;
+  group.add(iceSky);
+
   // Irregular shore ribbon rather than a perfect white ring.
   const shorePositions = [];
   const shoreIndices = [];
@@ -372,6 +412,71 @@ export function buildColdIsland() {
     bubble.position.set(pondX + Math.cos(angle) * r, pondY + 0.012, pondZ + Math.sin(angle) * r);
     group.add(bubble);
   }
+
+  // Fine snow glints on the cold meadow. Most points are asleep; a small
+  // twinkling subset catches the moon / aurora and keeps the snow from reading
+  // as a flat white surface.
+  const glitterPositions = [];
+  const glitterSeeds = [];
+  let glitterSeed = 0x7f31;
+  const glitterRandom = () => {
+    glitterSeed = (glitterSeed * 1664525 + 1013904223) >>> 0;
+    return glitterSeed / 4294967296;
+  };
+  const isClearOfColdProps = (x, z) => {
+    const lakeDistance = Math.hypot((x - pondX) / 1.2, (z - pondZ) / 1.0);
+    if (lakeDistance < 1.14) return false;
+    for (const [px, pz, radius] of [[-2.3, 1.3, 0.75], [2.7, 0.35, 0.65], [1.9, 2.65, 0.42]]) {
+      if (Math.hypot(x - px, z - pz) < radius) return false;
+    }
+    return Math.hypot(x, z) < 4.25;
+  };
+  for (let i = 0; i < 1900; i++) {
+    const angle = glitterRandom() * TAU;
+    const radius = Math.sqrt(glitterRandom()) * 4.15;
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius * 0.78;
+    if (!isClearOfColdProps(x, z)) continue;
+    glitterPositions.push(x, heightAt(x, z) + 0.018, z);
+    glitterSeeds.push(glitterRandom(), glitterRandom(), glitterRandom(), glitterRandom());
+  }
+  const glitterGeometry = new THREE.BufferGeometry();
+  glitterGeometry.setAttribute("position", new THREE.Float32BufferAttribute(glitterPositions, 3));
+  glitterGeometry.setAttribute("aSeed", new THREE.Float32BufferAttribute(glitterSeeds, 4));
+  const glitterMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 1.6) },
+      uOpacity: { value: 0.72 },
+    },
+    vertexShader: `uniform float uTime;
+uniform float uPixelRatio;
+attribute vec4 aSeed;
+varying float vAlpha;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  float twinkle = pow(max(0.0, sin(uTime * (0.45 + aSeed.x * 1.25) + aSeed.y * 46.0)), 12.0);
+  gl_PointSize = (1.15 + aSeed.w * 2.0) * uPixelRatio * (0.58 + twinkle * 1.25);
+  gl_Position = projectionMatrix * mv;
+  vAlpha = twinkle * (0.22 + aSeed.z * 0.78);
+}`,
+    fragmentShader: `uniform float uOpacity;
+varying float vAlpha;
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  float a = 1.0 - smoothstep(0.0, 1.0, d);
+  gl_FragColor = vec4(vec3(0.76, 0.9, 1.0), a * vAlpha * uOpacity);
+}`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+  });
+  const snowGlitter = new THREE.Points(glitterGeometry, glitterMaterial);
+  snowGlitter.name = "snow glitter";
+  snowGlitter.frustumCulled = false;
+  snowGlitter.renderOrder = 4;
+  group.add(snowGlitter);
 
 
   const cloudSeaMaterial = new THREE.ShaderMaterial({
@@ -769,6 +874,7 @@ void main() {
   function setMode(mode, phase, mood) {
     const alpine = mode === "alpine";
     const polar = mode === "aurora";
+    coldSky.setMode(mode, phase);
     forestLife.visible = alpine;
     alpineGroup.visible = alpine;
     polarGroup.visible = polar;
@@ -831,6 +937,8 @@ void main() {
   }
 
   function update(time) {
+    coldSky.uniforms.uTime.value = time;
+    snowGlitter.material.uniforms.uTime.value = time;
     if (aurora.group.visible) aurora.update(time);
     if (forestLife.visible) {
       const p = Math.max(0, (cabinPulseUntil - time) / 1.3);

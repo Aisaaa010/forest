@@ -50,7 +50,7 @@ export const scenes = {
     phaseLabels: { morning: "蓝调清晨", afternoon: "黄昏暖窗", night: "夜晚灯火" },
     icon: "cabin",
     biome: "alpine",
-    view: { yaw: 0.34, pitch: 0.24, zoom: 1.0, targetY: 0.48, yawRange: 0.55, minPitch: 0.18, maxPitch: 0.5 },
+    view: { yaw: 0.34, pitch: 0.22, zoom: 1.0, targetY: 0.46, yawRange: 0.55, minPitch: 0.16, maxPitch: 0.5 },
   },
   aurora: {
     title: "极光冰原",
@@ -64,7 +64,7 @@ export const scenes = {
     lockedPhase: true,
     icon: "aurora",
     biome: "antarctic",
-    view: { yaw: -0.26, pitch: 0.2, zoom: 1.02, targetY: 0.52, yawRange: 0.5, minPitch: 0.16, maxPitch: 0.46 },
+    view: { yaw: -0.26, pitch: 0.13, zoom: 1.0, targetY: 0.45, yawRange: 0.5, minPitch: 0.1, maxPitch: 0.42 },
   },
 };
 

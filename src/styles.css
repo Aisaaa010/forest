@@ -1914,6 +1914,8 @@ dialog p {
     radial-gradient(ellipse at 50% 60%, #4de8bb1f 0, transparent 64%);
   animation: island-mist 26s ease-in-out infinite alternate;
 }
+/* The aurora now lives in the sky dome; keep the CSS layer only as a fallback. */
+.forest-view[data-scene="aurora"]::before { opacity: 0; }
 /* Cinematic edge falloff for the cold scenes; keeps the centre luminous. */
 .forest-view::after {
   content: "";
