@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { onMounted, onUnmounted, watch } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { createFoliageMaterials, buildTrees, makeLeafMassGeometry } from "../scene/vegetation.js";
 import { buildFlowers, buildGrass } from "../scene/flora.js";
 import { createPollen, enhanceMaterial, sceneUniforms } from "../scene/materials.js";
@@ -40,6 +40,23 @@ const { smoothstep } = THREE.MathUtils;
 const worldUp = new THREE.Vector3(0, 1, 0);
 
 export function useForestScene3D(canvasRef, viewRef, state, notify) {
+  const focused = ref(false);
+  const focusLabel = ref("");
+  const exploreTargets = ref([]);
+  const hoverName = ref("");
+  const hoverX = ref(0);
+  const hoverY = ref(0);
+  let focusById = null;
+  let resetView = null;
+
+  function focusTarget(id) {
+    focusById?.(id);
+  }
+
+  function clearFocusView() {
+    resetView?.();
+  }
+
   let disposeScene;
 
   onMounted(() => {
@@ -62,7 +79,8 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
       return;
     }
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
+    const basePixelRatio = Math.min(window.devicePixelRatio || 1, 1.6);
+    renderer.setPixelRatio(basePixelRatio);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -91,6 +109,14 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     let cameraDistance = fitDistance;
     let targetDistance = cameraDistance;
     let lastScene = null;
+    let baseEnvironmentIntensity = 0.45;
+    let baseFogDensity = 0.011;
+    let focusBlend = 0;
+    let targetFocusBlend = 0;
+    let focusRadius = 0.5;
+    const focusCenter = new THREE.Vector3();
+    let highResApplied = false;
+    let interactionUntil = 0;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     const ambientLight = new THREE.HemisphereLight(0xeaf4da, 0x423b2d, 1.0);
@@ -118,6 +144,11 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     const nightGlow = new THREE.PointLight(0x9cdbca, 2.2, 12);
     nightGlow.position.set(0, 3.5, 0);
     scene.add(nightGlow);
+    // A soft camera-following rim only comes alive in inspect mode, so tiny
+    // PBR details still have a highlight to catch at close range.
+    const focusRim = new THREE.PointLight(0xe4f6ff, 0, 9, 2);
+    scene.add(focusRim);
+    scene.add(sunlight.target);
 
     const island = new THREE.Group();
     scene.add(island);
@@ -1002,6 +1033,12 @@ void main() {
     const activePointers = new Map();
     let pinchDistanceStart = 0;
     let pinchZoomStart = cameraDistance;
+    let pinchMidStart = null;
+    let panTargetStart = null;
+    let panPointerStart = null;
+    let lastTapAt = 0;
+    let lastTapX = 0;
+    let lastTapY = 0;
     let hoverTree = null;
     let hoverRock = null;
     let hoverFirefly = null;
@@ -1026,13 +1063,74 @@ void main() {
       );
       camera.lookAt(cameraTarget);
     }
-    function minCameraDistance() { return Math.max(3.6, fitDistance * 0.22); }
+    function focusDistanceFor(radius) {
+      const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+      return THREE.MathUtils.clamp((radius / Math.tan(halfFov)) * 1.18, 0.68, fitDistance * 1.15);
+    }
+    function minCameraDistance() {
+      return focused.value ? Math.max(0.55, focusRadius * 0.55) : Math.max(3.6, fitDistance * 0.22);
+    }
     function maxCameraDistance() { return fitDistance * 1.45; }
-    function focusOnDetail(point, distanceRatio = 0.38) {
+    function applyFocusShadow(center, radius) {
+      const shadowCamera = sunlight.shadow.camera;
+      if (center) {
+        sunlight.target.position.copy(center);
+        const size = THREE.MathUtils.clamp(radius * 2.2, 1.25, 5.6);
+        shadowCamera.left = -size;
+        shadowCamera.right = size;
+        shadowCamera.top = size;
+        shadowCamera.bottom = -size;
+      } else {
+        sunlight.target.position.set(0, 0, 0);
+        shadowCamera.left = -6;
+        shadowCamera.right = 6;
+        shadowCamera.top = 6;
+        shadowCamera.bottom = -6;
+      }
+      sunlight.target.updateMatrixWorld();
+      shadowCamera.updateProjectionMatrix();
+    }
+    function setFocusState(label, center, radius) {
+      focused.value = true;
+      focusLabel.value = label;
+      focusCenter.copy(center);
+      focusRadius = Math.max(0.08, radius);
+      targetFocusBlend = 1;
+      highResApplied = false;
+      focusRim.color.setHex(label.includes("极光") ? 0x9dffe1 : 0xe4f6ff);
+      applyFocusShadow(center, focusRadius);
+    }
+    function clearFocusState() {
+      focused.value = false;
+      focusLabel.value = "";
+      targetFocusBlend = 0;
+      focusRadius = 0.5;
+      if (highResApplied) {
+        highResApplied = false;
+        setRenderPixelRatio(basePixelRatio);
+      }
+      applyFocusShadow(null, 0.5);
+    }
+    function focusOnPoint(point, radius, label, pitch = null) {
+      const r = THREE.MathUtils.clamp(radius || 0.5, 0.08, 4);
+      setFocusState(label, point, r);
       targetTargetX = point.x;
-      targetTargetY = point.y + 0.015;
+      targetTargetY = point.y;
       targetTargetZ = point.z;
-      targetDistance = Math.min(targetDistance, Math.max(minCameraDistance(), fitDistance * distanceRatio));
+      if (pitch !== null) targetPitch = pitch;
+      targetDistance = THREE.MathUtils.clamp(focusDistanceFor(r), minCameraDistance(), maxCameraDistance());
+      clampOrbitTargets();
+      dirty = true;
+    }
+    function focusOnObject(object, label, point, radius, pitch = null) {
+      if (!object) return;
+      object.updateWorldMatrix(true, true);
+      const box = new THREE.Box3().setFromObject(object);
+      if (box.isEmpty()) return;
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      const center = point ? point.clone() : sphere.center.clone();
+      const r = THREE.MathUtils.clamp(radius || sphere.radius, 0.08, 4);
+      focusOnPoint(center, r, label, pitch);
     }
     function currentView() {
       return scenes[state.scene]?.view;
@@ -1045,8 +1143,12 @@ void main() {
       if (view?.yawRange) {
         targetYaw = THREE.MathUtils.clamp(targetYaw, view.yaw - view.yawRange, view.yaw + view.yawRange);
       }
+      targetTargetX = THREE.MathUtils.clamp(targetTargetX, -4.9, 4.9);
+      targetTargetZ = THREE.MathUtils.clamp(targetTargetZ, -3.8, 3.8);
+      targetTargetY = THREE.MathUtils.clamp(targetTargetY, -0.05, 3.2);
     }
     function resetCameraToScene() {
+      clearFocusState();
       const view = currentView();
       targetYaw = view?.yaw ?? 0.45;
       targetPitch = view?.pitch ?? 0.48;
@@ -1078,9 +1180,85 @@ void main() {
       dirty = true;
       if (!contextLost) renderer.render(scene, camera);
     }
+    function setRenderPixelRatio(ratio) {
+      if (Math.abs(renderer.getPixelRatio() - ratio) < 0.01) return;
+      renderer.setPixelRatio(ratio);
+      const rect = view.getBoundingClientRect();
+      renderer.setSize(rect.width, rect.height, false);
+      dirty = true;
+    }
+    function beginInteraction() {
+      interactionUntil = performance.now() + 240;
+      if (highResApplied) {
+        highResApplied = false;
+        setRenderPixelRatio(basePixelRatio);
+      }
+    }
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(view);
     resize();
+
+    const focusTargets = new Map();
+    function addFocusTarget(id, label, object, options = {}) {
+      focusTargets.set(id, { label, object, point: options.point, radius: options.radius, pitch: options.pitch });
+    }
+    function refreshExploreTargets() {
+      const next = [];
+      focusTargets.clear();
+      const add = (id, label, object, options) => {
+        addFocusTarget(id, label, object, options);
+        next.push({ id, label });
+      };
+      const coldScene = state.scene === "alpine" || state.scene === "aurora";
+      if (coldScene) {
+        const active = ensureColdIsland();
+        if (state.scene === "alpine") {
+          add("cabin", "主木屋", active.cabin.group, { radius: 1.35 });
+          add("smallCabin", "右侧小屋", active.smallCabin.group, { radius: 0.95 });
+          add("campfire", "火堆", active.campfire.group, { radius: 0.48 });
+        } else {
+          add("hut", "科考小屋", active.hut.group, { radius: 0.9 });
+          add("glacier", "冰川", active.glacier.group, { radius: 2.1 });
+          add("aurora", "极光", active.aurora.group, { radius: 2.6 });
+        }
+      } else {
+        if (snowman.visible) {
+          add("snowman", "雪人", snowman, { point: snowman.position.clone(), radius: 0.65, pitch: 0.56 });
+        }
+        add("spring", "泉眼", spring, { radius: 0.3, pitch: 0.62 });
+        if (waterfalls[0]) {
+          const fallPoint = waterfalls[0].userData.curve.getPoint(0.55);
+          add("waterfall", "瀑布", waterfalls[0], { point: waterfalls[0].localToWorld(fallPoint.clone()), radius: 0.9, pitch: 0.5 });
+        }
+        const visibleFireflies = fireflies.filter((fly) => fly.visible);
+        if (visibleFireflies.length) {
+          const center = visibleFireflies.reduce((sum, fly) => sum.add(fly.position), new THREE.Vector3()).multiplyScalar(1 / visibleFireflies.length);
+          add("fireflies", "萤火虫", visibleFireflies[0], { point: center, radius: 0.5, pitch: 0.52 });
+        }
+        if (flowerBeds.visible && flowerBeds.userData.blooms?.length) {
+          const centerBlooms = flowerBeds.userData.blooms.filter((bloom) => Math.hypot(bloom.x, bloom.z) < 2.45);
+          const candidates = centerBlooms.length ? centerBlooms : flowerBeds.userData.blooms;
+          const openBloom = candidates.reduce((best, bloom) => {
+            const clearance = Math.min(...TREE_SPOTS.map(([tx, tz]) => Math.hypot(bloom.x - tx, bloom.z - tz)));
+            return !best || clearance > best.clearance ? { bloom, clearance } : best;
+          }, null);
+          const bloom = flowerBeds.localToWorld((openBloom?.bloom || candidates[0]).clone());
+          add("flowers", "花丛", flowerBeds, { point: bloom, radius: 0.75, pitch: 0.64 });
+        }
+        if (butterflies.group.visible && butterflies.group.children.length) {
+          add("butterfly", "蝴蝶", butterflies.group.children[0], { radius: 0.3, pitch: 0.56 });
+        }
+      }
+      exploreTargets.value = next;
+    }
+    function focusTargetById(id) {
+      const target = focusTargets.get(id);
+      if (!target) return;
+      focusOnObject(target.object, target.label, target.point, target.radius, target.pitch);
+      interactionUntil = performance.now() + 420;
+    }
+    focusById = focusTargetById;
+    resetView = resetCameraToScene;
 
     function applySceneMood() {
       const night = state.phase === "night";
@@ -1215,6 +1393,7 @@ void main() {
       }
       if (lastScene !== state.scene) {
         const view = currentView();
+        clearFocusState();
         if (view) {
           targetYaw = view.yaw;
           targetPitch = view.pitch;
@@ -1233,6 +1412,13 @@ void main() {
         clampOrbitTargets();
         lastScene = state.scene;
       }
+      baseEnvironmentIntensity = coldScene
+        ? coldMood.environment
+        : (night ? 0.08 : rainy ? 0.12 : snowing ? 0.22 : afternoon ? 0.18 : 0.15);
+      baseFogDensity = coldScene
+        ? coldMood.fog.density
+        : (night ? 0.005 : rainy ? 0.007 : snowing ? 0.006 : afternoon ? 0.003 : 0.004);
+      refreshExploreTargets();
       dirty = true;
     }
     applySceneMood();
@@ -1334,14 +1520,25 @@ void main() {
       if (state.scene === "aurora") return [cold.hut.group, cold.glacier.group, cold.aurora.group];
       return [];
     }
-    function interact(event) {
+    function interact(event, inspect = false) {
       pointFromPointer(event);
       const coldScene = state.scene === "alpine" || state.scene === "aurora";
       if (coldScene) {
         const coldHit = raycaster.intersectObjects(coldTargets(), true)[0];
         if (coldHit) {
-          focusOnDetail(coldHit.point, 0.4);
           const action = cold.interact(coldHit);
+          if (inspect) {
+            const labels = { cabin: "主木屋", smallCabin: "右侧小屋", fire: "火堆", hut: "科考小屋", glacier: "冰川", aurora: "极光" };
+            const groups = {
+              cabin: cold.cabin.group,
+              smallCabin: cold.smallCabin.group,
+              fire: cold.campfire.group,
+              hut: cold.hut.group,
+              glacier: cold.glacier.group,
+              aurora: cold.aurora.group,
+            };
+            if (groups[action]) focusOnObject(groups[action], labels[action] || "细节");
+          }
           const tint = action === "aurora" ? 0x72ffd2 : action === "glacier" ? 0xbdefff : action === "fire" ? 0xffb066 : 0xffd39a;
           burstAt(coldHit.point, true, tint);
           dirty = true;
@@ -1350,7 +1547,7 @@ void main() {
       }
       const snowmanHit = snowman.visible ? raycaster.intersectObject(snowman, true)[0] : null;
       if (snowmanHit) {
-        focusOnDetail(snowmanHit.point, 0.34);
+        if (inspect) focusOnObject(snowman, "雪人", snowman.position.clone(), 0.65, 0.56);
         snowman.userData.reactionUntil = performance.now() + 950;
         gatherFireflies(snowmanHit.point);
         burstAt(snowmanHit.point, true);
@@ -1363,6 +1560,7 @@ void main() {
         let firefly = fireflyHit.object;
         while (firefly && !fireflies.includes(firefly)) firefly = firefly.parent;
         if (firefly) {
+          if (inspect) focusOnObject(firefly, "萤火虫", undefined, undefined, 0.52);
           const localPoint = island.worldToLocal(fireflyHit.point.clone());
           const escape = firefly.position.clone().sub(localPoint);
           if (escape.lengthSq() < 0.0025) escape.set(Math.cos(fireflies.indexOf(firefly) * 2.4), 0, Math.sin(fireflies.indexOf(firefly) * 2.4));
@@ -1377,8 +1575,8 @@ void main() {
       }
       const treeHit = raycaster.intersectObjects(treeTargets, false)[0];
       if (treeHit) {
-        focusOnDetail(treeHit.point, 0.42);
         const tree = treeHit.object.userData.tree;
+        if (inspect) focusOnObject(tree, "树", treeHit.point.clone(), 1.4);
         tree.userData.bloomUntil = performance.now() + 1100;
         tree.userData.tapAt = performance.now();
         gatherFireflies(treeHit.point);
@@ -1388,7 +1586,7 @@ void main() {
       }
       const rockHit = raycaster.intersectObjects(interactiveRocks, false)[0];
       if (rockHit) {
-        focusOnDetail(rockHit.point, 0.42);
+        if (inspect) focusOnObject(rockHit.object, "石头", undefined, undefined, 0.6);
         rockHit.object.userData.tapAt = performance.now();
         gatherFireflies(rockHit.point);
         burstAt(rockHit.point, state.weather === "snow", 0xd6c99a);
@@ -1397,9 +1595,7 @@ void main() {
       }
       const flowerHit = raycaster.intersectObjects(flowerBeds.children, false)[0];
       if (flowerHit) {
-        // Focus the clicked bloom so its sculpted petals, pollen disc and leaves
-        // can be inspected at close range; Home returns to the full island.
-        focusOnDetail(flowerHit.point, 0.31);
+        if (inspect) focusOnPoint(flowerHit.point, 0.35, "花朵", 0.64);
         gatherFireflies(flowerHit.point);
         const localPoint = flowerBeds.worldToLocal(flowerHit.point.clone());
         butterflies.attract(localPoint);
@@ -1425,7 +1621,7 @@ void main() {
       }
       const streamHit = raycaster.intersectObject(stream, false)[0];
       if (streamHit) {
-        focusOnDetail(streamHit.point, 0.4);
+        if (inspect) focusOnPoint(streamHit.point, 0.55, "溪流", 0.6);
         gatherFireflies(streamHit.point);
         addRipple(streamHit.point, 0x9edfd7);
         splashAt(streamHit.point);
@@ -1434,7 +1630,7 @@ void main() {
       }
       const waterfallHit = raycaster.intersectObjects(waterfalls, false)[0];
       if (waterfallHit) {
-        focusOnDetail(waterfallHit.point, 0.4);
+        if (inspect) focusOnObject(waterfallHit.object, "瀑布", undefined, undefined, 0.5);
         gatherFireflies(waterfallHit.point);
         const impact = waterfallHit.object.localToWorld(waterfallHit.object.userData.curve.getPoint(1).clone());
         addRipple(impact, 0xb8eee7);
@@ -1453,21 +1649,55 @@ void main() {
       burstAt(groundHit.point, state.weather === "snow");
       dirty = true;
     }
+    function setHoverLabel(name, event) {
+      if (!name) {
+        hoverName.value = "";
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      hoverName.value = name;
+      hoverX.value = event.clientX - rect.left;
+      hoverY.value = event.clientY - rect.top;
+    }
+    function panFromStart(start, dx, dy) {
+      const scale = cameraDistance * 0.00058;
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      targetTargetX = start.x - (right.x * dx - up.x * dy) * scale;
+      targetTargetY = start.y - (right.y * dx - up.y * dy) * scale;
+      targetTargetZ = start.z - (right.z * dx - up.z * dy) * scale;
+      clampOrbitTargets();
+    }
+    function pointerWorldAtTarget(event) {
+      pointFromPointer(event);
+      const normal = new THREE.Vector3();
+      camera.getWorldDirection(normal);
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, cameraTarget);
+      const hit = new THREE.Vector3();
+      return raycaster.ray.intersectPlane(plane, hit) ? hit : null;
+    }
     function onPointerDown(event) {
-      if (event.pointerType === "mouse" && event.button !== 0) return;
-      canvas.style.cursor = "grabbing";
+      if (event.pointerType === "mouse" && event.button !== 0 && event.button !== 2) return;
+      beginInteraction();
+      canvas.focus?.({ preventScroll: true });
+      const pan = event.pointerType === "mouse" && event.button === 2;
+      canvas.style.cursor = pan ? "move" : "grabbing";
       activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (activePointers.size >= 2) {
         const [a, b] = [...activePointers.values()];
         pinchDistanceStart = Math.hypot(a.x - b.x, a.y - b.y);
         pinchZoomStart = targetDistance;
+        pinchMidStart = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
+        panTargetStart = { x: targetTargetX, y: targetTargetY, z: targetTargetZ };
         pointerDown = null;
         dragged = true;
         canvas.setPointerCapture?.(event.pointerId);
         return;
       }
-      pointerDown = { x: event.clientX, y: event.clientY, id: event.pointerId };
+      pointerDown = { x: event.clientX, y: event.clientY, id: event.pointerId, mode: pan ? "pan" : "orbit" };
       dragStart = { yaw: targetYaw, pitch: targetPitch };
+      panPointerStart = { x: event.clientX, y: event.clientY };
+      panTargetStart = { x: targetTargetX, y: targetTargetY, z: targetTargetZ };
       dragged = false;
       canvas.setPointerCapture?.(event.pointerId);
     }
@@ -1476,17 +1706,27 @@ void main() {
         activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       }
       if (activePointers.size >= 2) {
+        beginInteraction();
         const [a, b] = [...activePointers.values()];
+        const midpoint = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
         const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
         targetDistance = THREE.MathUtils.clamp(pinchZoomStart * pinchDistanceStart / distance, minCameraDistance(), maxCameraDistance());
+        if (pinchMidStart && panTargetStart) {
+          panFromStart(panTargetStart, midpoint.x - pinchMidStart.x, midpoint.y - pinchMidStart.y);
+        }
         dirty = true;
         return;
       }
       if (pointerDown) {
         const dx = event.clientX - pointerDown.x;
         const dy = event.clientY - pointerDown.y;
-        if (Math.abs(dx) + Math.abs(dy) > 5) dragged = true;
-        if (dragged) {
+        if (Math.abs(dx) + Math.abs(dy) > 5) {
+          dragged = true;
+          beginInteraction();
+        }
+        if (dragged && pointerDown.mode === "pan" && panTargetStart) {
+          panFromStart(panTargetStart, event.clientX - panPointerStart.x, event.clientY - panPointerStart.y);
+        } else if (dragged) {
           targetYaw = dragStart.yaw - dx * 0.004;
           targetPitch = dragStart.pitch + dy * 0.0024;
           clampOrbitTargets();
@@ -1512,12 +1752,29 @@ void main() {
         const coldHoverHit = coldScene ? raycaster.intersectObjects(coldTargets(), true)[0] : null;
         hoverCold = coldHoverHit ? cold.actionFor(coldHoverHit.object) : null;
         hoverInteractive = Boolean(hoverTree || hoverRock || hoverFirefly || hoverSnowman || hoverFlower || hoverWater || hoverCold);
+        const coldLabels = { cabin: "主木屋", smallCabin: "右侧小屋", fire: "火堆", hut: "科考小屋", glacier: "冰川", aurora: "极光" };
+        setHoverLabel(
+          hoverCold ? coldLabels[hoverCold] || "细节"
+            : hoverTree ? "树"
+              : hoverRock ? "石头"
+                : hoverFirefly ? "萤火虫"
+                  : hoverSnowman ? "雪人"
+                    : hoverFlower ? "花"
+                      : hoverWater ? "水" : "",
+          event,
+        );
         canvas.style.cursor = hoverInteractive ? "pointer" : "grab";
       }
       dirty = true;
     }
     function onPointerUp(event) {
-      if (pointerDown?.id === event.pointerId && !dragged) interact(event);
+      if (pointerDown?.id === event.pointerId && pointerDown.mode === "orbit" && !dragged) {
+        const doubleTap = performance.now() - lastTapAt < 340 && Math.hypot(event.clientX - lastTapX, event.clientY - lastTapY) < 26;
+        lastTapAt = performance.now();
+        lastTapX = event.clientX;
+        lastTapY = event.clientY;
+        interact(event, doubleTap);
+      }
       activePointers.delete(event.pointerId);
       pointerDown = null;
       if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
@@ -1529,17 +1786,38 @@ void main() {
       pointerDown = null;
       canvas.style.cursor = "grab";
     }
-    function onPointerLeave() { hoverTree = null; hoverRock = null; hoverFirefly = null; hoverCold = null; hoverInteractive = false; dirty = true; }
+    function onPointerLeave() {
+      hoverTree = null;
+      hoverRock = null;
+      hoverFirefly = null;
+      hoverCold = null;
+      hoverInteractive = false;
+      hoverName.value = "";
+      dirty = true;
+    }
     function onWheel(event) {
+      beginInteraction();
       const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? view.clientHeight : 1);
-      targetDistance = THREE.MathUtils.clamp(targetDistance + delta * 0.0005 * fitDistance, minCameraDistance(), maxCameraDistance());
+      const previousDistance = targetDistance;
+      const nextDistance = THREE.MathUtils.clamp(targetDistance + delta * 0.0005 * fitDistance, minCameraDistance(), maxCameraDistance());
+      const underPointer = pointerWorldAtTarget(event);
+      targetDistance = nextDistance;
+      if (underPointer && previousDistance > 0.001) {
+        const factor = (1 - nextDistance / previousDistance) * 0.82;
+        targetTargetX += (underPointer.x - targetTargetX) * factor;
+        targetTargetY += (underPointer.y - targetTargetY) * factor;
+        targetTargetZ += (underPointer.z - targetTargetZ) * factor;
+        clampOrbitTargets();
+      }
       dirty = true;
       event.preventDefault();
     }
     function onKeyDown(event) {
-      if (!["Enter", " ", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-", "Home"].includes(event.key)) return;
+      if (!["Enter", " ", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-", "Home", "Escape"].includes(event.key)) return;
       event.preventDefault();
-      if (event.key === "ArrowLeft") targetYaw -= 0.15;
+      beginInteraction();
+      if (event.key === "Escape") resetCameraToScene();
+      else if (event.key === "ArrowLeft") targetYaw -= 0.15;
       else if (event.key === "ArrowRight") targetYaw += 0.15;
       else if (event.key === "ArrowUp") targetPitch += 0.08;
       else if (event.key === "ArrowDown") targetPitch -= 0.08;
@@ -1548,18 +1826,33 @@ void main() {
       else if (event.key === "Home") resetCameraToScene();
       else {
         const rect = canvas.getBoundingClientRect();
-        interact({ clientX: rect.left + rect.width * 0.5, clientY: rect.top + rect.height * 0.5 });
+        interact({ clientX: rect.left + rect.width * 0.5, clientY: rect.top + rect.height * 0.5 }, false);
       }
       clampOrbitTargets();
       dirty = true;
     }
+    const preventContextMenu = (event) => event.preventDefault();
+    const onDoubleClick = (event) => {
+      if (event.button !== 0) return;
+      beginInteraction();
+      interact(event, true);
+    };
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointercancel", onPointerCancel);
     canvas.addEventListener("pointerleave", onPointerLeave);
+    canvas.addEventListener("dblclick", onDoubleClick);
+    canvas.addEventListener("contextmenu", preventContextMenu);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("keydown", onKeyDown);
+    const onGlobalKeyDown = (event) => {
+      if (event.key === "Escape" && focused.value) {
+        event.preventDefault();
+        resetCameraToScene();
+      }
+    };
+    document.addEventListener("keydown", onGlobalKeyDown);
 
     function updateParticles(items, mesh, now, delta, snowy) {
       for (let i = 0; i < items.length; i++) {
@@ -1588,7 +1881,10 @@ void main() {
 
     function animate(now) {
       frame = requestAnimationFrame(animate);
-      if (!active || contextLost || document.hidden || now - lastFrame < 30) return;
+      const cameraMovingNow = cameraYaw !== targetYaw || cameraPitch !== targetPitch || cameraDistance !== targetDistance
+        || cameraTarget.x !== targetTargetX || cameraTarget.y !== targetTargetY || cameraTarget.z !== targetTargetZ;
+      const fastFrame = performance.now() < interactionUntil || cameraMovingNow;
+      if (!active || contextLost || document.hidden || now - lastFrame < (fastFrame ? 16 : 30)) return;
       const delta = lastFrame ? Math.min((now - lastFrame) / 1000, 0.05) : 0;
       lastFrame = now;
       const timeStep = reducedMotion.matches ? 0 : delta;
@@ -1650,7 +1946,7 @@ void main() {
       waterUniforms.uSunDir.value.copy(sunlight.position).normalize();
       sceneUniforms.uSunView.value.copy(waterUniforms.uSunDir.value).transformDirection(camera.matrixWorldInverse);
       if (cameraYaw !== targetYaw || cameraPitch !== targetPitch || cameraDistance !== targetDistance || cameraTarget.x !== targetTargetX || cameraTarget.y !== targetTargetY || cameraTarget.z !== targetTargetZ) {
-        const cameraBlend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 5.2);
+        const cameraBlend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * (focused.value ? 8.5 : 5.2));
         cameraYaw += (targetYaw - cameraYaw) * cameraBlend;
         cameraPitch += (targetPitch - cameraPitch) * cameraBlend;
         cameraDistance += (targetDistance - cameraDistance) * cameraBlend;
@@ -1667,6 +1963,26 @@ void main() {
         moving = true;
       }
 
+      focusBlend = reducedMotion.matches
+        ? targetFocusBlend
+        : focusBlend + (targetFocusBlend - focusBlend) * (1 - Math.exp(-delta * 4.2));
+      if (focusBlend < 0.001) focusBlend = 0;
+      scene.environmentIntensity = baseEnvironmentIntensity + focusBlend * 0.28;
+      scene.fog.density = baseFogDensity * (1 - focusBlend * 0.5);
+      if (focusBlend > 0.001) {
+        focusRim.position.copy(camera.position);
+        focusRim.position.y += 0.18;
+        focusRim.intensity = focusBlend * 2.3;
+      } else {
+        focusRim.intensity = 0;
+      }
+      const settled = !cameraMovingNow && performance.now() >= interactionUntil;
+      if (focused.value && settled && !highResApplied) {
+        highResApplied = true;
+        const fineRatio = Math.min(window.devicePixelRatio || 1, 2);
+        if (fineRatio > renderer.getPixelRatio()) setRenderPixelRatio(fineRatio);
+      }
+
       trees.forEach((tree) => {
           // Layered sway with slow gusts; each tree leans a little differently.
           const phase = tree.userData.phase;
@@ -1678,7 +1994,7 @@ void main() {
             ? Math.sin(tapAge * 0.032) * Math.exp(-tapAge / 360) * 0.12 : 0;
           tree.rotation.z = sway + tapShake;
           tree.rotation.x = reducedMotion.matches ? 0 : Math.cos(now * 0.0007 + phase * 1.3) * strength * 0.5 + tapShake * 0.45;
-          const focusScale = tree === hoverTree ? 1.12 : 1;
+          const focusScale = 1;
           const bloom = tree.userData.bloomUntil > now ? 1.08 : 1;
           const scaleTarget = tree.userData.baseScale * focusScale * bloom;
           const previousScale = tree.userData.displayScale;
@@ -1779,7 +2095,7 @@ void main() {
           const tapProgress = tapAge < 620 ? tapAge / 620 : null;
           if (rock.userData.tapAt && tapProgress === null) rock.userData.tapAt = 0;
           const hop = tapProgress === null ? 0 : Math.sin(tapProgress * Math.PI) * 0.17;
-          const hover = rock === hoverRock ? 1.08 : 1;
+          const hover = 1;
           const tapScale = tapProgress === null ? 1 : 1 + Math.sin(tapProgress * Math.PI) * 0.1;
           const float = rock.userData.floatPhase === undefined ? 0 : Math.sin(now * 0.0007 + rock.userData.floatPhase) * 0.08;
           rock.position.y = rock.userData.baseY + float + hop;
@@ -1898,8 +2214,11 @@ void main() {
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerCancel);
       canvas.removeEventListener("pointerleave", onPointerLeave);
+      canvas.removeEventListener("dblclick", onDoubleClick);
+      canvas.removeEventListener("contextmenu", preventContextMenu);
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onGlobalKeyDown);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
       const geometries = new Set();
@@ -1921,4 +2240,15 @@ void main() {
   });
 
   onUnmounted(() => disposeScene?.());
+
+  return {
+    focused,
+    focusLabel,
+    exploreTargets,
+    hoverName,
+    hoverX,
+    hoverY,
+    focusTarget,
+    resetView: clearFocusView,
+  };
 }

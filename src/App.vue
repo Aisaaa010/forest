@@ -183,7 +183,16 @@ const {
   savePreset,
   removePreset,
 } = useSoundPresets(state, toggleAudio, notify);
-useForestScene3D(threeCanvas, forestView, state, notify);
+const {
+  focused,
+  focusLabel,
+  exploreTargets,
+  focusTarget,
+  resetView,
+  hoverName,
+  hoverX,
+  hoverY,
+} = useForestScene3D(threeCanvas, forestView, state, notify);
 const { saving, downloadPostcard } = usePostcard(threeCanvas, state, notify);
 const {
   duration,
@@ -436,7 +445,7 @@ onUnmounted(() => {
         id="forest-view"
         ref="forestView"
         class="forest-view"
-        :class="{ playing: state.playing }"
+        :class="{ playing: state.playing, 'is-focused': focused }"
         :data-phase="state.phase"
         :data-weather="state.weather"
         :data-scene="state.scene"
@@ -447,9 +456,18 @@ onUnmounted(() => {
           id="forest-3d-canvas"
           ref="threeCanvas"
           tabindex="0"
-          aria-label="拖动旋转岛屿，滚轮或双指缩放；点击花朵、树木、水面、雪人、小屋、冰墙或极光，会平滑移动视角近看细节并触发互动。按 Home 键回到整岛视角，按 Enter 键唤起微光。"
+          aria-label="单击触发互动，双击或使用探索细节近看；拖动旋转，右键拖动平移，滚轮朝光标缩放；Esc 或 Home 返回整岛视角。"
         ></canvas>
         <div class="island-global-snow" aria-hidden="true"></div>
+        <div v-if="focused" class="island-focus-bar island-chrome" role="status" aria-live="polite" :inert="immersed">
+          <span><em>正在看</em><strong>{{ focusLabel }}</strong></span>
+          <button type="button" @click="resetView">返回全岛</button>
+        </div>
+        <div v-if="exploreTargets.length" class="island-explore island-chrome" :inert="immersed" aria-label="探索细节">
+          <span>探索细节</span>
+          <button v-for="target in exploreTargets" :key="target.id" type="button" @click="focusTarget(target.id)">{{ target.label }}</button>
+        </div>
+        <span v-if="hoverName" class="island-hover-label" :style="{ left: hoverX + 'px', top: hoverY + 'px' }" aria-hidden="true">{{ hoverName }}</span>
         <div v-if="!state.threeAvailable" class="island-unavailable" role="status">
           <ForestIcon name="tree" />
           <p>岛屿正在准备中</p>
@@ -500,8 +518,8 @@ onUnmounted(() => {
           <button id="immersive" ref="immersiveButton" @click="immersed = true"><ForestIcon name="expand" /><span>沉浸</span></button>
         </div>
       </div>
-      <p class="island-gesture-hint island-chrome" :inert="immersed">拖动环绕 · 滚轮 / 双指缩放<br /><span>{{ interactionHint }} · Home 回到全景</span></p>
-      <div class="island-session island-chrome" :inert="immersed"><span>在岛上停留</span><strong id="session-time">{{ sessionTime }}</strong><small v-if="focusRunning">专注 {{ focusTimeLabel }}</small><small v-if="sleepRunning">声音将在 {{ sleepTimeLabel }} 后停止</small></div>
+      <p v-if="!focused" class="island-gesture-hint island-chrome" :inert="immersed">拖动环绕 · 右键拖动平移 · 滚轮朝光标缩放<br /><span>{{ interactionHint }} · 单击互动，双击细看 · Esc 返回</span></p>
+      <div v-if="!focused" class="island-session island-chrome" :inert="immersed"><span>在岛上停留</span><strong id="session-time">{{ sessionTime }}</strong><small v-if="focusRunning">专注 {{ focusTimeLabel }}</small><small v-if="sleepRunning">声音将在 {{ sleepTimeLabel }} 后停止</small></div>
       <button v-show="immersed" id="leave-immersive" ref="leaveImmersiveButton" class="island-exit" @click="immersed = false"><ForestIcon name="close" />显示控件</button>
     </main>
 
