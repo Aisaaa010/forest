@@ -1338,8 +1338,7 @@ void main() {
       number(fillLight, "intensity", night ? 0.4 : rainy ? 0.45 : 0.5);
       color(fillLight, "color", night ? 0x5685ba : rainy ? 0x8da4ad : snowing ? 0xb7d3f6 : 0xa9d5c4);
       number(nightGlow, "intensity", night ? 3.4 : 0.4);
-      const fogColor = night ? 0x243f47 : rainy ? 0x6f8589 : snowing ? 0x94adb7 : afternoon ? 0xa8bcaa : 0x9db7a9;
-      color(scene.fog, "color", fogColor);
+      color(scene.fog, "color", sky.uniforms.uHorizon.value);
       number(scene.fog, "density", night ? 0.005 : rainy ? 0.007 : snowing ? 0.006 : afternoon ? 0.003 : 0.004);
       number(scene, "environmentIntensity", night ? 0.08 : rainy ? 0.12 : snowing ? 0.22 : afternoon ? 0.18 : 0.15);
       color(meadow.material, "color", night ? 0x637570 : rainy ? 0xa8b8ab : 0xe8efdc);
@@ -1392,7 +1391,7 @@ void main() {
         color(fillLight, "color", coldMood.fill.color);
         number(backLight, "intensity", coldMood.back.intensity);
         color(backLight, "color", coldMood.back.color);
-        color(scene.fog, "color", coldMood.fog.color);
+        color(scene.fog, "color", sky.uniforms.uHorizon.value);
         number(scene.fog, "density", coldMood.fog.density);
         number(scene, "environmentIntensity", coldMood.environment);
         number(renderer, "toneMappingExposure", coldMood.exposure);

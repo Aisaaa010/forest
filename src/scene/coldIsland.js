@@ -13,6 +13,50 @@ import { COLD_SKY_GLSL, createColdSkyUniforms } from "./coldSky.js";
 const TAU = Math.PI * 2;
 const ALPINE_PALETTE = [0x2f4d43, 0x3d5c4d, 0x4b6a57, 0x5c7864];
 
+// Wind-carved snow ripples: broad shallow bands plus fine grain, used as a bump
+// map on the snow blanket.
+function makeSnowRippleTexture() {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#b9c5c9";
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 36; i++) {
+    const y = (i / 36) * size + Math.sin(i * 1.7) * 8;
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(235,245,250,${0.18 + (i % 4) * 0.035})`;
+    ctx.lineWidth = 2 + (i % 3) * 2;
+    for (let x = 0; x <= size; x += 12) {
+      const yy = y + Math.sin(x * 0.021 + i * 0.9) * 9 + Math.sin(x * 0.057 + i) * 3;
+      if (x === 0) ctx.moveTo(x, yy);
+      else ctx.lineTo(x, yy);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(80,105,120,0.12)";
+    ctx.lineWidth = 2;
+    for (let x = 0; x <= size; x += 12) {
+      const yy = y + 4 + Math.sin(x * 0.021 + i * 0.9) * 9;
+      if (x === 0) ctx.moveTo(x, yy);
+      else ctx.lineTo(x, yy);
+    }
+    ctx.stroke();
+  }
+  for (let i = 0; i < 2400; i++) {
+    const value = 160 + Math.floor(Math.random() * 55);
+    ctx.fillStyle = `rgba(${value},${value + 8},${value + 12},0.08)`;
+    ctx.fillRect(Math.random() * size, Math.random() * size, 1.2, 1.2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.NoColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = 4;
+  return texture;
+}
+
 // A small procedural ice sheet: snowy grain, branching cracks and trapped
 // bubbles. The same map doubles as a low bump map so the lake stops reading as
 // a flat coloured disc.
@@ -175,6 +219,9 @@ export function buildColdIsland({ skyUniforms = null } = {}) {
     new THREE.MeshStandardMaterial({ color: 0xe1ebf3, roughness: 0.84 }),
     { detail: { scale: 18, normalStrength: 0.035 } },
   );
+  snowGroundMaterial.bumpMap = makeSnowRippleTexture();
+  snowGroundMaterial.bumpScale = 0.008;
+  snowGroundMaterial.needsUpdate = true;
   const snowCover = new THREE.Mesh(meadow.geometry, snowGroundMaterial);
   snowCover.name = "cold snow cover";
   snowCover.position.y = 0.003;
@@ -286,6 +333,43 @@ void main() {
   iceSky.position.set(pondX, pondY + 0.008, pondZ);
   iceSky.renderOrder = 2;
   group.add(iceSky);
+
+  // A narrow pale band at the waterline reads as ice thickness rather than a
+  // flat blue decal meeting the snow.
+  const rimPositions = [];
+  const rimIndices = [];
+  for (let i = 0; i < lakeSegments; i++) {
+    const [, , , angle] = lakePoints[i];
+    const r = lakeOutline(angle);
+    const inner = r - 0.045 - (i % 3) * 0.008;
+    rimPositions.push(
+      Math.cos(angle) * inner, 0.007, Math.sin(angle) * inner,
+      Math.cos(angle) * r, 0.007, Math.sin(angle) * r,
+    );
+  }
+  for (let i = 0; i < lakeSegments; i++) {
+    const a = i * 2;
+    const b = ((i + 1) % lakeSegments) * 2;
+    rimIndices.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  const rimGeometry = new THREE.BufferGeometry();
+  rimGeometry.setAttribute("position", new THREE.Float32BufferAttribute(rimPositions, 3));
+  rimGeometry.setIndex(rimIndices);
+  rimGeometry.computeVertexNormals();
+  const iceRim = new THREE.Mesh(
+    rimGeometry,
+    new THREE.MeshPhysicalMaterial({
+      color: 0xd2eef5,
+      roughness: 0.24,
+      metalness: 0.02,
+      transparent: true,
+      opacity: 0.58,
+      side: THREE.DoubleSide,
+    }),
+  );
+  iceRim.position.set(pondX, pondY, pondZ);
+  iceRim.renderOrder = 2;
+  group.add(iceRim);
 
   // Irregular shore ribbon rather than a perfect white ring.
   const shorePositions = [];
