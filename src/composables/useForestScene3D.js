@@ -98,6 +98,104 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     // A very light aerial haze ties the far rim to the CSS sky; the island stays crisp.
     scene.fog = new THREE.FogExp2(0x9db7a9, 0.011);
     const camera = new THREE.PerspectiveCamera(33, 1, 0.1, 80);
+
+    // Selective glow: only a small set of warm/additive meshes are rendered into
+    // this half-resolution buffer. The base image stays on the normal direct
+    // renderer, so snow and sky keep their original contrast.
+    const BLOOM_LAYER = 1;
+    const bloomRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: true });
+    const bloomBlurRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+    const bloomScene = new THREE.Scene();
+    const bloomCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const bloomQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+    bloomQuad.frustumCulled = false;
+    bloomScene.add(bloomQuad);
+    const bloomBlurMaterial = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1, 1) } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uTexel; varying vec2 vUv;
+void main(){
+  vec3 c = texture2D(tDiffuse, vUv).rgb * 0.227027;
+  c += (texture2D(tDiffuse, vUv + uTexel * vec2(1.3846, 0.0)).rgb + texture2D(tDiffuse, vUv - uTexel * vec2(1.3846, 0.0)).rgb) * 0.3162162;
+  c += (texture2D(tDiffuse, vUv + uTexel * vec2(0.0, 3.2308)).rgb + texture2D(tDiffuse, vUv - uTexel * vec2(0.0, 3.2308)).rgb) * 0.0702703;
+  gl_FragColor = vec4(c, 1.0);
+}`,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+    });
+    const bloomCompositeMaterial = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, uStrength: { value: 0.9 } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float uStrength; varying vec2 vUv;
+void main(){
+  vec4 c = texture2D(tDiffuse, vUv);
+  float a = max(c.r, max(c.g, c.b));
+  gl_FragColor = vec4(c.rgb * uStrength, a * uStrength);
+}`,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    let bloomEnabled = window.innerWidth >= 700;
+
+    function tagBloomObjects() {
+      scene.traverse((object) => {
+        if (!object.isMesh && !object.isSprite) return;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        const glows = materials.some((material) => {
+          if (!material) return false;
+          if (material.blending === THREE.AdditiveBlending) return true;
+          if (material.isMeshBasicMaterial && material.color) {
+            const color = material.color;
+            return color.r > 0.72 && color.g > 0.26 && color.b < 0.92;
+          }
+          return false;
+        });
+        if (glows) object.layers.enable(BLOOM_LAYER);
+      });
+    }
+
+    function resizeBloomTargets(width, height, pixelRatio) {
+      const w = Math.max(2, Math.floor(width * pixelRatio * 0.5));
+      const h = Math.max(2, Math.floor(height * pixelRatio * 0.5));
+      bloomRT.setSize(w, h);
+      bloomBlurRT.setSize(w, h);
+      bloomBlurMaterial.uniforms.uTexel.value.set(1 / w, 1 / h);
+    }
+
+    function renderBloom() {
+      if (!bloomEnabled) return;
+      const previousAutoClear = renderer.autoClear;
+      camera.layers.set(BLOOM_LAYER);
+      renderer.setRenderTarget(bloomRT);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear();
+      renderer.render(scene, camera);
+      camera.layers.set(0);
+
+      bloomBlurMaterial.uniforms.tDiffuse.value = bloomRT.texture;
+      bloomQuad.material = bloomBlurMaterial;
+      renderer.setRenderTarget(bloomBlurRT);
+      renderer.clear();
+      renderer.render(bloomScene, bloomCamera);
+
+      bloomCompositeMaterial.uniforms.tDiffuse.value = bloomBlurRT.texture;
+      bloomQuad.material = bloomCompositeMaterial;
+      renderer.setRenderTarget(null);
+      renderer.autoClear = false;
+      renderer.render(bloomScene, bloomCamera);
+      renderer.autoClear = previousAutoClear;
+    }
+
+    function renderScene() {
+      if (contextLost) return;
+      renderer.setRenderTarget(null);
+      renderer.render(scene, camera);
+      renderBloom();
+    }
+
     const cameraTarget = new THREE.Vector3(0, 0.2, 0);
     const centerTargetX = 0;
     const centerTargetZ = 0;
@@ -1174,6 +1272,7 @@ void main() {
       camera.setViewOffset(rect.width, rect.height, 0, rect.height * (camera.aspect < 0.8 ? 0.055 : 0.035), rect.width, rect.height);
       camera.updateProjectionMatrix();
       renderer.setSize(rect.width, rect.height, false);
+      resizeBloomTargets(rect.width, rect.height, renderer.getPixelRatio());
       pollen.material.uniforms.uScale.value = rect.height * renderer.getPixelRatio() * 0.09;
       snowfall.material.uniforms.uScale.value = rect.height * renderer.getPixelRatio() * 0.072;
       waterfallSprays.forEach((spray) => {
@@ -1181,13 +1280,14 @@ void main() {
       });
       updateCamera();
       dirty = true;
-      if (!contextLost) renderer.render(scene, camera);
+      if (!contextLost) renderScene();
     }
     function setRenderPixelRatio(ratio) {
       if (Math.abs(renderer.getPixelRatio() - ratio) < 0.01) return;
       renderer.setPixelRatio(ratio);
       const rect = view.getBoundingClientRect();
       renderer.setSize(rect.width, rect.height, false);
+      resizeBloomTargets(rect.width, rect.height, ratio);
       dirty = true;
     }
     function beginInteraction() {
@@ -1427,6 +1527,7 @@ void main() {
         ? coldMood.fog.density
         : (night ? 0.005 : rainy ? 0.007 : snowing ? 0.006 : afternoon ? 0.003 : 0.004);
       refreshExploreTargets();
+      tagBloomObjects();
       dirty = true;
     }
     applySceneMood();
@@ -2179,7 +2280,7 @@ void main() {
       }
       // Water, wind, pollen and snow animate in shaders, so keep drawing while time advances.
       if (timeStep > 0) moving = true;
-      if (moving || dirty) renderer.render(scene, camera);
+      if (moving || dirty) renderScene();
       dirty = false;
     }
     frame = requestAnimationFrame(animate);
