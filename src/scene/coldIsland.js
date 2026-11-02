@@ -13,6 +13,12 @@ import { COLD_SKY_GLSL, createColdSkyUniforms } from "./coldSky.js";
 const TAU = Math.PI * 2;
 const ALPINE_PALETTE = [0x2f4d43, 0x3d5c4d, 0x4b6a57, 0x5c7864];
 
+function tagGlowMaterial(group, material) {
+  group.traverse((object) => {
+    if (object.isMesh && object.material === material) object.userData.glow = true;
+  });
+}
+
 // Wind-carved snow ripples: broad shallow bands plus fine grain, used as a bump
 // map on the snow blanket.
 function makeSnowRippleTexture() {
@@ -720,6 +726,7 @@ void main() {
   const alpineGroup = new THREE.Group();
   alpineGroup.name = "alpine camp";
   const cabin = createAlpineCabin();
+  tagGlowMaterial(cabin.group, cabin.windowMaterial);
   const cabinX = -2.3;
   const cabinZ = 1.25;
   cabin.group.position.set(cabinX, heightAt(cabinX, cabinZ), cabinZ);
@@ -728,6 +735,7 @@ void main() {
   alpineGroup.add(cabin.group);
 
   const smallCabin = createSmallCabin();
+  tagGlowMaterial(smallCabin.group, smallCabin.windowMaterial);
   smallCabin.group.position.set(smallCabinX, heightAt(smallCabinX, smallCabinZ), smallCabinZ);
   smallCabin.group.rotation.y = -0.52;
   smallCabin.group.scale.setScalar(1.15);
@@ -748,6 +756,7 @@ void main() {
       depthWrite: false,
     }),
   );
+  fireGlow.userData.glow = true;
   fireGlow.position.set(1.15, pondY + 0.014, 2.55);
   fireGlow.scale.set(1.7, 1, 0.8);
   fireGlow.renderOrder = 4;
@@ -853,6 +862,7 @@ void main() {
     post.position.set(x, heightAt(x, z) + 0.11, z);
     alpineGroup.add(post);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffc06a }));
+    lamp.userData.glow = true;
     lamp.position.set(x, heightAt(x, z) + 0.24, z);
     alpineGroup.add(lamp);
   }
@@ -868,6 +878,7 @@ void main() {
   const polarGroup = new THREE.Group();
   polarGroup.name = "polar camp";
   const hut = createPolarHut();
+  tagGlowMaterial(hut.group, hut.windowMaterial);
   const hutX = 0.7;
   const hutZ = 1.15;
   hut.group.position.set(hutX, heightAt(hutX, hutZ), hutZ);

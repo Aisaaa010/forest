@@ -121,6 +121,7 @@ export function createAurora() {
     createCurtain({ radius: 8.6, height: 4.8, y: 4.0, low: 0x79ffe0, mid: 0x2ee3a7, high: 0x9b8cff, opacity: 0.08, rotation: 1.1 }),
     createCurtain({ radius: 9.6, height: 3.8, y: 4.5, low: 0x9affeb, mid: 0x47f7b7, high: 0x7c82ff, opacity: 0.05, rotation: -0.7, thetaStart: -Math.PI * 0.45, thetaLength: Math.PI * 0.9 }),
   ];
+  layers.forEach((layer) => { layer.userData.glow = true; });
   group.add(...layers);
   const stars = createStars(320);
   group.add(stars);
@@ -135,6 +136,7 @@ export function createAurora() {
     new THREE.CircleGeometry(0.9, 24),
     new THREE.MeshBasicMaterial({ color: 0xdce7e8, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false }),
   );
+  halo.userData.glow = true;
   halo.position.copy(moon.position);
   halo.lookAt(0, 2, 0);
   group.add(halo);

@@ -444,6 +444,7 @@ void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(
   });
   for (let i = 0; i < 3; i++) {
     const flame = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.62), flameMaterial);
+    flame.userData.glow = true;
     flame.position.y = 0.3;
     flame.rotation.y = (i / 3) * Math.PI;
     group.add(flame);

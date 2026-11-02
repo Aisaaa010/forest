@@ -2,3 +2,6 @@ node_modules/
 dist/
 output/
 .sites-local/
+/_chrome/
+/_cdp.mjs
+/_preview.log

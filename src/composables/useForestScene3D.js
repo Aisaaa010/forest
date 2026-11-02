@@ -102,90 +102,132 @@ export function useForestScene3D(canvasRef, viewRef, state, notify) {
     // Selective glow: only a small set of warm/additive meshes are rendered into
     // this half-resolution buffer. The base image stays on the normal direct
     // renderer, so snow and sky keep their original contrast.
-    const BLOOM_LAYER = 1;
     const bloomRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: true });
-    const bloomBlurRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+    const bloomLevels = Array.from({ length: 3 }, () => ({
+      horizontal: new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false }),
+      vertical: new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false }),
+    }));
     const bloomScene = new THREE.Scene();
     const bloomCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const bloomQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
     bloomQuad.frustumCulled = false;
     bloomScene.add(bloomQuad);
     const bloomBlurMaterial = new THREE.ShaderMaterial({
-      uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1, 1) } },
+      uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1, 1) }, uDirection: { value: new THREE.Vector2(1, 0) } },
       vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`,
-      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uTexel; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uTexel; uniform vec2 uDirection; varying vec2 vUv;
 void main(){
   vec3 c = texture2D(tDiffuse, vUv).rgb * 0.227027;
-  c += (texture2D(tDiffuse, vUv + uTexel * vec2(1.3846, 0.0)).rgb + texture2D(tDiffuse, vUv - uTexel * vec2(1.3846, 0.0)).rgb) * 0.3162162;
-  c += (texture2D(tDiffuse, vUv + uTexel * vec2(0.0, 3.2308)).rgb + texture2D(tDiffuse, vUv - uTexel * vec2(0.0, 3.2308)).rgb) * 0.0702703;
+  c += (texture2D(tDiffuse, vUv + uTexel * uDirection * 1.3846).rgb + texture2D(tDiffuse, vUv - uTexel * uDirection * 1.3846).rgb) * 0.3162162;
+  c += (texture2D(tDiffuse, vUv + uTexel * uDirection * 3.2308).rgb + texture2D(tDiffuse, vUv - uTexel * uDirection * 3.2308).rgb) * 0.0702703;
   gl_FragColor = vec4(c, 1.0);
 }`,
       depthTest: false,
       depthWrite: false,
-      transparent: true,
+      blending: THREE.NoBlending,
     });
     const bloomCompositeMaterial = new THREE.ShaderMaterial({
-      uniforms: { tDiffuse: { value: null }, uStrength: { value: 0.9 } },
+      uniforms: {
+        tLevel0: { value: null }, tLevel1: { value: null }, tLevel2: { value: null },
+        uStrength: { value: 0.9 },
+      },
       vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`,
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float uStrength; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tLevel0; uniform sampler2D tLevel1; uniform sampler2D tLevel2; uniform float uStrength; varying vec2 vUv;
 void main(){
-  vec4 c = texture2D(tDiffuse, vUv);
-  gl_FragColor = vec4(c.rgb * uStrength, 1.0);
+  vec3 c = texture2D(tLevel0, vUv).rgb * 0.56;
+  c += texture2D(tLevel1, vUv).rgb * 0.31;
+  c += texture2D(tLevel2, vUv).rgb * 0.18;
+  gl_FragColor = vec4(c * uStrength, 1.0);
 }`,
       transparent: true,
       depthTest: false,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
+    const bloomOccluderMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide, depthTest: true, depthWrite: true, toneMapped: false });
+    const bloomSpriteOccluderMaterial = new THREE.SpriteMaterial({ color: 0x000000, depthTest: true, depthWrite: true, toneMapped: false });
+    const bloomClearColor = new THREE.Color();
+    const bloomRenderObjects = [];
+    const bloomOriginalMaterials = [];
     let bloomEnabled = window.innerWidth >= 700;
 
     function tagBloomObjects() {
+      bloomRenderObjects.length = 0;
       scene.traverse((object) => {
         if (!object.isMesh && !object.isSprite) return;
-        const materials = Array.isArray(object.material) ? object.material : [object.material];
-        const glows = materials.some((material) => {
-          if (!material) return false;
-          if (material.blending === THREE.AdditiveBlending) return true;
-          if (material.isMeshBasicMaterial && material.color) {
-            const color = material.color;
-            return color.r > 0.72 && color.g > 0.26 && color.b < 0.92;
-          }
-          return false;
-        });
-        if (glows) object.layers.enable(BLOOM_LAYER);
+        bloomRenderObjects.push(object);
       });
     }
 
     function resizeBloomTargets(width, height, pixelRatio) {
-      const w = Math.max(2, Math.floor(width * pixelRatio * 0.5));
-      const h = Math.max(2, Math.floor(height * pixelRatio * 0.5));
+      let w = Math.max(2, Math.floor(width * pixelRatio * 0.5));
+      let h = Math.max(2, Math.floor(height * pixelRatio * 0.5));
       bloomRT.setSize(w, h);
-      bloomBlurRT.setSize(w, h);
-      bloomBlurMaterial.uniforms.uTexel.value.set(1 / w, 1 / h);
+      bloomLevels.forEach((level) => {
+        w = Math.max(2, Math.floor(w * 0.5));
+        h = Math.max(2, Math.floor(h * 0.5));
+        level.horizontal.setSize(w, h);
+        level.vertical.setSize(w, h);
+      });
     }
 
     function renderBloom() {
       if (!bloomEnabled) return;
       const previousAutoClear = renderer.autoClear;
-      camera.layers.set(BLOOM_LAYER);
-      renderer.setRenderTarget(bloomRT);
-      renderer.setClearColor(0x000000, 0);
-      renderer.clear();
-      renderer.render(scene, camera);
-      camera.layers.set(0);
+      const previousCameraMask = camera.layers.mask;
+      const previousTarget = renderer.getRenderTarget();
+      const previousClearAlpha = renderer.getClearAlpha();
+      const previousClearColor = renderer.getClearColor(bloomClearColor);
+      bloomOriginalMaterials.length = bloomRenderObjects.length;
+      try {
+        camera.layers.mask = 0xffffffff;
+        for (let i = 0; i < bloomRenderObjects.length; i++) {
+          const object = bloomRenderObjects[i];
+          bloomOriginalMaterials[i] = object.material;
+          if (object.userData.glow !== true) {
+            object.material = object.isSprite ? bloomSpriteOccluderMaterial : bloomOccluderMaterial;
+          }
+        }
+        renderer.setRenderTarget(bloomRT);
+        renderer.setClearColor(0x000000, 0);
+        renderer.clear();
+        renderer.render(scene, camera);
 
-      bloomBlurMaterial.uniforms.tDiffuse.value = bloomRT.texture;
-      bloomQuad.material = bloomBlurMaterial;
-      renderer.setRenderTarget(bloomBlurRT);
-      renderer.clear();
-      renderer.render(bloomScene, bloomCamera);
+        let source = bloomRT;
+        for (let i = 0; i < bloomLevels.length; i++) {
+          const level = bloomLevels[i];
+          const sourceTexture = source.texture;
+          const image = sourceTexture.image;
+          bloomBlurMaterial.uniforms.tDiffuse.value = sourceTexture;
+          bloomBlurMaterial.uniforms.uTexel.value.set(1 / image.width, 1 / image.height);
+          bloomBlurMaterial.uniforms.uDirection.value.set(1, 0);
+          bloomQuad.material = bloomBlurMaterial;
+          renderer.setRenderTarget(level.horizontal);
+          renderer.clear();
+          renderer.render(bloomScene, bloomCamera);
 
-      bloomCompositeMaterial.uniforms.tDiffuse.value = bloomBlurRT.texture;
-      bloomQuad.material = bloomCompositeMaterial;
-      renderer.setRenderTarget(null);
-      renderer.autoClear = false;
-      renderer.render(bloomScene, bloomCamera);
-      renderer.autoClear = previousAutoClear;
+          bloomBlurMaterial.uniforms.tDiffuse.value = level.horizontal.texture;
+          bloomBlurMaterial.uniforms.uTexel.value.set(1 / level.horizontal.width, 1 / level.horizontal.height);
+          bloomBlurMaterial.uniforms.uDirection.value.set(0, 1);
+          renderer.setRenderTarget(level.vertical);
+          renderer.clear();
+          renderer.render(bloomScene, bloomCamera);
+          source = level.vertical;
+        }
+        bloomCompositeMaterial.uniforms.tLevel0.value = bloomLevels[0].vertical.texture;
+        bloomCompositeMaterial.uniforms.tLevel1.value = bloomLevels[1].vertical.texture;
+        bloomCompositeMaterial.uniforms.tLevel2.value = bloomLevels[2].vertical.texture;
+        bloomQuad.material = bloomCompositeMaterial;
+        renderer.setRenderTarget(null);
+        renderer.autoClear = false;
+        renderer.render(bloomScene, bloomCamera);
+      } finally {
+        for (let i = 0; i < bloomRenderObjects.length; i++) bloomRenderObjects[i].material = bloomOriginalMaterials[i];
+        camera.layers.mask = previousCameraMask;
+        renderer.setRenderTarget(previousTarget);
+        renderer.setClearColor(previousClearColor, previousClearAlpha);
+        renderer.autoClear = previousAutoClear;
+      }
     }
 
     function renderScene() {
@@ -215,6 +257,7 @@ void main(){
     let targetFocusBlend = 0;
     let focusRadius = 0.5;
     const focusCenter = new THREE.Vector3();
+    let focusedObject = null;
     let highResApplied = false;
     let interactionUntil = 0;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -517,6 +560,7 @@ void main(){
       new THREE.RingGeometry(0.135, 0.18, 24).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color: 0xdff6ef, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide }),
     );
+    springFoam.userData.glow = true;
     springFoam.position.set(springX, springY + 0.002, springZ);
     springFoam.renderOrder = 2;
     spring.add(springFoam);
@@ -1035,7 +1079,8 @@ void main() {
       core.scale.set(0.015, 0.014, 0.023);
       firefly.add(core);
       firefly.userData.wings = wings;
-      firefly.userData.glow = glow;
+      glow.userData.glow = true;
+      firefly.userData.glowMesh = glow;
       // Merge the many tiny static parts into a handful of material batches.
       // This keeps the extra detail affordable when the whole swarm is visible at night.
       firefly.updateMatrixWorld(true);
@@ -1065,6 +1110,8 @@ void main() {
       firefly.userData.baseScale = (1.42 + (index % 4) * 0.08) * 0.25;
       firefly.scale.setScalar(firefly.userData.baseScale);
       firefly.userData.scareTarget = new THREE.Vector3();
+      firefly.userData.homeTarget = new THREE.Vector3();
+      firefly.userData.gatherTarget = new THREE.Vector3();
       firefly.userData.scareUntil = 0;
       firefly.position.set(
         Math.sin(index * 9.17) * (1.2 + index % 4 * 0.45),
@@ -1101,6 +1148,7 @@ void main() {
       length: 0.65 + Math.random() * 1.05,
     }));
     let rainImpactTimer = 0;
+    const rainImpactPoint = new THREE.Vector3();
 
     // Snow fades in and out with the weather instead of popping on.
     const snowfall = createSnowfall(window.innerWidth < 700 ? 450 : 900, sceneUniforms.uTime);
@@ -1203,6 +1251,7 @@ void main() {
     function clearFocusState() {
       focused.value = false;
       focusLabel.value = "";
+      focusedObject = null;
       targetFocusBlend = 0;
       focusRadius = 0.5;
       if (highResApplied) {
@@ -1212,6 +1261,7 @@ void main() {
       applyFocusShadow(null, 0.5);
     }
     function focusOnPoint(point, radius, label, pitch = null) {
+      focusedObject = null;
       const r = THREE.MathUtils.clamp(radius || 0.5, 0.08, 4);
       setFocusState(label, point, r);
       targetTargetX = point.x;
@@ -1231,6 +1281,7 @@ void main() {
       const center = point ? point.clone() : sphere.center.clone();
       const r = THREE.MathUtils.clamp(radius || sphere.radius, 0.08, 4);
       focusOnPoint(center, r, label, pitch);
+      if (label === "蝴蝶") focusedObject = object;
     }
     function currentView() {
       return scenes[state.scene]?.view;
@@ -2041,7 +2092,7 @@ void main() {
             const x = Math.cos(angle) * radius * 4.65;
             const z = Math.sin(angle) * radius * 3.48;
             onWater = streamDistance(x, z) < 0.2;
-            point = new THREE.Vector3(x, onWater ? 0.2 : heightAt(x, z), z);
+            point = rainImpactPoint.set(x, onWater ? 0.2 : heightAt(x, z), z);
           }
           addRainImpact(point, onWater);
           rainImpactTimer = 0.055 + Math.random() * 0.12;
@@ -2050,6 +2101,13 @@ void main() {
       }
       waterUniforms.uSunDir.value.copy(sunlight.position).normalize();
       sceneUniforms.uSunView.value.copy(waterUniforms.uSunDir.value).transformDirection(camera.matrixWorldInverse);
+      if (focused.value && focusedObject) {
+        focusedObject.updateWorldMatrix(true, false);
+        focusedObject.getWorldPosition(focusCenter);
+        targetTargetX = focusCenter.x;
+        targetTargetY = focusCenter.y;
+        targetTargetZ = focusCenter.z;
+      }
       if (cameraYaw !== targetYaw || cameraPitch !== targetPitch || cameraDistance !== targetDistance || cameraTarget.x !== targetTargetX || cameraTarget.y !== targetTargetY || cameraTarget.z !== targetTargetZ) {
         const cameraBlend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * (focused.value ? 8.5 : 5.2));
         cameraYaw += (targetYaw - cameraYaw) * cameraBlend;
@@ -2168,27 +2226,28 @@ void main() {
       if (timeStep > 0) {
         fireflies.forEach((fly, index) => {
           const phase = now * 0.0012 + index;
-          const home = new THREE.Vector3(
+          const home = fly.userData.homeTarget.set(
             fly.userData.baseX + Math.sin(now * 0.0007 + index) * 0.18,
             fly.userData.baseY + Math.sin(phase) * 0.16,
             fly.userData.baseZ + Math.cos(now * 0.00065 + index * 1.4) * 0.16,
           );
           const gathering = now < fireflyGather.until;
           const startled = now < fly.userData.scareUntil;
+          const gatherTarget = fly.userData.gatherTarget.set(
+            Math.cos(index * 2.4) * (0.22 + index % 3 * 0.07),
+            0.18 + (index % 5) * 0.09 + Math.sin(phase * 2) * 0.04,
+            Math.sin(index * 2.4) * (0.22 + index % 3 * 0.07),
+          ).add(fireflyGather.target);
           const target = startled
             ? fly.userData.scareTarget
             : gathering
-            ? fireflyGather.target.clone().add(new THREE.Vector3(
-              Math.cos(index * 2.4) * (0.22 + index % 3 * 0.07),
-              0.18 + (index % 5) * 0.09 + Math.sin(phase * 2) * 0.04,
-              Math.sin(index * 2.4) * (0.22 + index % 3 * 0.07),
-            ))
+            ? gatherTarget
             : home;
           fly.position.lerp(target, 1 - Math.exp(-timeStep * (startled ? 4.2 : gathering ? 2.2 : 1.1)));
           const pulse = (Math.sin(now * (startled ? 0.01 : gathering ? 0.004 : 0.002) + index * 2) + 1) * 0.5;
-          fly.userData.glow.material.opacity = startled ? 0.68 + pulse * 0.3 : gathering ? 0.44 + pulse * 0.42 : 0.24 + pulse * 0.2;
+          fly.userData.glowMesh.material.opacity = startled ? 0.68 + pulse * 0.3 : gathering ? 0.44 + pulse * 0.42 : 0.24 + pulse * 0.2;
           fly.scale.setScalar(fly.userData.baseScale * (gathering ? 1 + pulse * 0.1 : 1));
-          if (fly === hoverFirefly) fly.userData.glow.material.opacity = Math.min(1, fly.userData.glow.material.opacity + 0.12);
+          if (fly === hoverFirefly) fly.userData.glowMesh.material.opacity = Math.min(1, fly.userData.glowMesh.material.opacity + 0.12);
           fly.rotation.y = Math.sin(phase * 0.55) * 0.22;
           fly.userData.wings.forEach(({ hinge, side }) => {
             hinge.rotation.x = side * (0.18 + Math.sin(now * 0.035 + index * 3) * 0.62);
@@ -2337,6 +2396,16 @@ void main() {
       geometries.add(sparkGeometry);
       geometries.forEach((geometry) => geometry.dispose());
       materials.forEach((material) => material.dispose());
+      bloomRT.dispose();
+      bloomLevels.forEach((level) => {
+        level.horizontal.dispose();
+        level.vertical.dispose();
+      });
+      bloomQuad.geometry.dispose();
+      bloomBlurMaterial.dispose();
+      bloomCompositeMaterial.dispose();
+      bloomOccluderMaterial.dispose();
+      bloomSpriteOccluderMaterial.dispose();
       if (scene.environment) scene.environment.dispose();
       renderer.dispose();
       state.threeAvailable = false;
