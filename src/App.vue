@@ -479,7 +479,7 @@ onUnmounted(() => {
         <div class="island-global-snow" aria-hidden="true"></div>
         <div v-if="focused" class="island-focus-bar island-chrome" role="status" aria-live="polite" :inert="immersed">
           <span><em>正在看</em><strong>{{ focusLabel }}</strong></span>
-          <button type="button" @click="resetView">返回全岛</button>
+          <button type="button" @click="resetView">返回全景</button>
         </div>
         <div v-if="exploreTargets.length" class="island-explore island-chrome" :inert="immersed" aria-label="探索细节">
           <span>探索细节</span>

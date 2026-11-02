@@ -130,8 +130,7 @@ void main(){
       fragmentShader: `uniform sampler2D tDiffuse; uniform float uStrength; varying vec2 vUv;
 void main(){
   vec4 c = texture2D(tDiffuse, vUv);
-  float a = max(c.r, max(c.g, c.b));
-  gl_FragColor = vec4(c.rgb * uStrength, a * uStrength);
+  gl_FragColor = vec4(c.rgb * uStrength, 1.0);
 }`,
       transparent: true,
       depthTest: false,
@@ -1246,7 +1245,7 @@ void main() {
       }
       targetTargetX = THREE.MathUtils.clamp(targetTargetX, -4.9, 4.9);
       targetTargetZ = THREE.MathUtils.clamp(targetTargetZ, -3.8, 3.8);
-      targetTargetY = THREE.MathUtils.clamp(targetTargetY, -0.05, 3.2);
+      targetTargetY = THREE.MathUtils.clamp(targetTargetY, -3.5, 3.2);
     }
     function resetCameraToScene() {
       clearFocusState();
@@ -1289,6 +1288,7 @@ void main() {
       renderer.setSize(rect.width, rect.height, false);
       resizeBloomTargets(rect.width, rect.height, ratio);
       dirty = true;
+      if (!contextLost) renderScene();
     }
     function beginInteraction() {
       interactionUntil = performance.now() + 240;
@@ -1941,17 +1941,11 @@ void main() {
       dirty = true;
     }
     const preventContextMenu = (event) => event.preventDefault();
-    const onDoubleClick = (event) => {
-      if (event.button !== 0) return;
-      beginInteraction();
-      interact(event, true);
-    };
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointercancel", onPointerCancel);
     canvas.addEventListener("pointerleave", onPointerLeave);
-    canvas.addEventListener("dblclick", onDoubleClick);
     canvas.addEventListener("contextmenu", preventContextMenu);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("keydown", onKeyDown);
@@ -1999,6 +1993,7 @@ void main() {
       const timeStep = reducedMotion.matches ? 0 : delta;
       sceneUniforms.uTime.value += timeStep;
       sky.uniforms.uTime.value = sceneUniforms.uTime.value;
+      scene.fog.color.copy(sky.uniforms.uHorizon.value);
       let moving = false;
       const blend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 6);
       const moodBlend = reducedMotion.matches ? 1 : 1 - Math.exp(-delta * 2.2);
@@ -2072,6 +2067,7 @@ void main() {
         updateCamera();
         moving = true;
       }
+      if (focused.value && cameraDistance > fitDistance * 0.9) clearFocusState();
 
       focusBlend = reducedMotion.matches
         ? targetFocusBlend
@@ -2324,7 +2320,6 @@ void main() {
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerCancel);
       canvas.removeEventListener("pointerleave", onPointerLeave);
-      canvas.removeEventListener("dblclick", onDoubleClick);
       canvas.removeEventListener("contextmenu", preventContextMenu);
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("keydown", onKeyDown);
